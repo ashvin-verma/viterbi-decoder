@@ -9,12 +9,12 @@ You can also include images in this folder and reference them in the markdown. E
 
 ## How it works
 
-Explain how your project works
+This is a Viterbi decoder, meant to recover the original message from a corrupted message. It takes inputs and sends outputs over UART.
 
 ## How to test
 
-Explain how to use your project
+TODO: Fill this in with instructions on baremetal tests
 
 ## External hardware
 
-List external hardware used in your project (e.g. PMOD, LED display, etc), if any
+FPGA or microcontroller to generate test stimulus and log output.

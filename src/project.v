@@ -14,6 +14,12 @@ module tt_um_example (
     input  wire       ena,      // always 1 when the design is powered, so you can ignore it
     input  wire       clk,      // clock
     input  wire       rst_n     // reset_n - low to reset
+    parameters (
+        parameter K = 5,
+        parameter D_TB = 32,
+        parameter G0_OCT = 023,
+        parameter G1_OCT = 035
+    )
 );
 
   // All output pins must be assigned. If not used, assign to 0.
@@ -23,5 +29,9 @@ module tt_um_example (
 
   // List all unused inputs to prevent warnings
   wire _unused = &{ena, clk, rst_n, 1'b0};
+
+  
+
+
 
 endmodule
