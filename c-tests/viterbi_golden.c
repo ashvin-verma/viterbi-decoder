@@ -175,16 +175,13 @@ int viterbi_decode(const uint8_t *rx_syms, int T, uint8_t *out_bits) {
     int s = s_best;
 
     while (t >= 0) {
-        // In LSB-insertion, the decoded input at time t is the LSB of the *current* state
-        uint8_t b_t = (uint8_t)(s & 1u);
-        if (out_idx >= 0) out_bits[out_idx--] = b_t;
+        uint8_t take_p1 = surv[t][s]; // survivor decision doubles as the decoded input bit
+        if (out_idx >= 0) out_bits[out_idx--] = take_p1;
 
-        // Follow the chosen predecessor for (t, s)
-        uint8_t take_p1 = surv[t][s];
         if (take_p1)
-            s = (s >> 1) | (1u << (m - 1));  // p1
+            s = (s >> 1) | (1u << (m - 1));  // chose predecessor p1
         else
-            s = (s >> 1);                    // p0
+            s = (s >> 1);                    // chose predecessor p0
 
         --t;
     }
@@ -415,8 +412,9 @@ int main(void){
             uint32_t p0 = (uint32_t)(s_next >> 1);
             uint32_t p1 = (uint32_t)((s_next >> 1) | (1u << (m-1)));
 
-            uint8_t e0 = conv_sym_from_pred(p0, 0, g0, g1);
-            uint8_t e1 = conv_sym_from_pred(p1, 1, g0, g1);
+            uint8_t b_t = (uint8_t)(s_next & 1u);
+            uint8_t e0 = conv_sym_from_pred(p0, b_t, g0, g1);
+            uint8_t e1 = conv_sym_from_pred(p1, b_t, g0, g1);
 
             int bm0 = ham2(r, e0);
             int bm1 = ham2(r, e1);
@@ -449,7 +447,6 @@ int main(void){
     while(t>=0){
         uint8_t b = surv[t][s];
         if(idx>=0) u_hat[idx--] = b;
-        // predecessor mapping (MSB insertion)
         if(b==0) s = s >> 1;
         else     s = (s >> 1) | (1u << (m-1));
         t--;
