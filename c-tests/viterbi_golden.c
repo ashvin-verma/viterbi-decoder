@@ -35,7 +35,7 @@ static inline int ham2(uint8_t a, uint8_t b) { // ham2.v
     return (x & 1u) + ((x >> 1) & 1u);
 }
 
-static inline uint8_t encode_symbol(uint8_t state, uint8_t input_bit) {
+static inline uint8_t encode_symbol(uint8_t state, uint8_t input_bit) { // not using anymore
     uint8_t shift_reg = (state << 1) | (input_bit & 0x1u);
     uint8_t out0 = parity_u32(shift_reg & G0_OCT);
     uint8_t out1 = parity_u32(shift_reg & G1_OCT);
@@ -308,7 +308,7 @@ int main(void) {
     // 1) BSC — i.i.d. flips on coded bits (hard-decision channel)
     // ===============================================================
     memcpy(rx_syms, syms_tx, T);
-    const double p_bit = 0.02;                     // 3% per coded-bit flip
+    const double p_bit = 0.1;                     // 3% per coded-bit flip
     bsc_hard(rx_syms, T, p_bit);
     run_case("BSC", u, N, syms_tx, T, rx_syms);
 
