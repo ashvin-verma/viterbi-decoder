@@ -35,37 +35,6 @@ static inline int ham2(uint8_t a, uint8_t b) { // ham2.v
     return (x & 1u) + ((x >> 1) & 1u);
 }
 
-static inline uint8_t encode_symbol(uint8_t state, uint8_t input_bit) { // not using anymore
-    uint8_t shift_reg = (state << 1) | (input_bit & 0x1u);
-    uint8_t out0 = parity_u32(shift_reg & G0_OCT);
-    uint8_t out1 = parity_u32(shift_reg & G1_OCT);
-    return (out0 << 1) | out1;
-}
-
-static uint32_t oct_to_mask(int oct, int Kbits) {
-    // MSB-insertion mapping:
-    // tap index 0 (current input) -> reg bit (Kbits-1)
-    // tap index i                 -> reg bit (Kbits-1 - i)
-    uint32_t mask = 0;
-    int v = oct;
-    int tap = 0; // 0..K-1
-    while (v > 0) {
-        int tri = v & 7;               // 3 octal bits
-        for (int i = 0; i < 3; ++i) {
-            if (tri & (1 << i)) {
-                int t = tap + i;
-                if (t < Kbits) {
-                    int reg_bit = (Kbits - 1) - t;   // mirror into MSB-insertion register
-                    mask |= (1u << reg_bit);
-                }
-            }
-        }
-        v >>= 3;
-        tap += 3;
-    }
-    return mask;
-}
-
 // 1) next_state: LSB insertion (new bit into LSB, shift left)
 // LSB insertion (new bit at LSB)
 static inline uint32_t next_state(uint32_t curr_state, uint8_t b, int m){
@@ -73,22 +42,22 @@ static inline uint32_t next_state(uint32_t curr_state, uint8_t b, int m){
     return ((curr_state << 1) | (b & 1u)) & mask;
 }
 
+
 static inline uint8_t conv_sym_from_pred(uint32_t p, uint32_t b,
                                          uint32_t g0, uint32_t g1){
-    // reg[0]=b (current), reg[i]=i-steps old = p<<1
+    // Register: bit 0 = newest input b, bits [K-1:1] = shifted predecessor state
+    // Direct octal polynomial: tap i -> bit i (bit 0 = current input tap)
     uint32_t reg = (b & 1u) | (p << 1);
     uint8_t c0 = parity_u32(reg & g0);
     uint8_t c1 = parity_u32(reg & g1);
     return (uint8_t)((c0 << 1) | c1);
 }
 
-// oct_to_mask() as you wrote originally (tap i -> bit i) is fine.
-
 
 void conv_encode(const uint8_t *in_bits, int N, uint8_t *out_syms, int *T_out) {
     const int m = K - 1;
-    const uint32_t g0 = oct_to_mask(G0_OCT, K);
-    const uint32_t g1 = oct_to_mask(G1_OCT, K);
+    const uint32_t g0 = G0_OCT;  // Direct octal
+    const uint32_t g1 = G1_OCT;
     uint32_t state = 0; // holds previous m bits
 
     int t = 0;
@@ -110,8 +79,8 @@ void conv_encode(const uint8_t *in_bits, int N, uint8_t *out_syms, int *T_out) {
 int viterbi_decode(const uint8_t *rx_syms, int T, uint8_t *out_bits) {
     const int m = K - 1;
     const int S = 1 << m; // states
-    const uint32_t g0 = oct_to_mask(G0_OCT, K);
-    const uint32_t g1 = oct_to_mask(G1_OCT, K);
+    const uint32_t g0 = G0_OCT;  // Direct octal
+    const uint32_t g1 = G1_OCT;
 
     // Path metrics
     int *pm_prev = (int*)malloc(S * sizeof(int));
@@ -393,9 +362,9 @@ int main(void){
     printf("Encoded syms (c0c1 as two bits):\n");
     for(int t=0;t<T;t++){ printf("%d%d ", (syms[t]>>1)&1, syms[t]&1); } printf("\n\n");
 
-    // Build masks (with MSB-insertion mapping)
-    uint32_t g0 = oct_to_mask(G0_OCT, K);
-    uint32_t g1 = oct_to_mask(G1_OCT, K);
+    // Build masks (direct octal notation)
+    uint32_t g0 = G0_OCT;
+    uint32_t g1 = G1_OCT;
 
     // Path metrics + survivor bytes (debug only)
     int pm_prev[S], pm_curr[S];
@@ -457,6 +426,25 @@ int main(void){
     // cleanup
     for(int tt=0; tt<T; ++tt) free(surv[tt]);
     free(surv); free(u_hat); free(syms);
+    return 0;
+}
+#endif
+
+#ifdef TEST_VECTORS
+// Generate test vectors for expected_bits module
+int main(void) {
+    const int m = K - 1;
+    const int S = 1 << m;
+    const uint32_t g0 = G0_OCT;
+    const uint32_t g1 = G1_OCT;
+    
+    // Generate test vectors: pred b expected
+    for (uint32_t p = 0; p < S; p++) {
+        for (uint32_t b = 0; b <= 1; b++) {
+            uint8_t expected = conv_sym_from_pred(p, b, g0, g1);
+            printf("%X %d %X\n", p, b, expected);
+        }
+    }
     return 0;
 }
 #endif

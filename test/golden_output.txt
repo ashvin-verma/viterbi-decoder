@@ -1,0 +1,44 @@
+=== Expected Bits Golden Model Test ===
+K=5, M=4, States=16
+G0_OCT=023 (mask=0x19), G1_OCT=035 (mask=0x17)
+
+Exhaustive test: all 16 states × 2 input bits = 32 cases
+
+pred=00 (0b0000), b=0 => expected=0b00 (0x0)
+pred=00 (0b0000), b=1 => expected=0b11 (0x3)
+pred=01 (0b0001), b=0 => expected=0b01 (0x1)
+pred=01 (0b0001), b=1 => expected=0b10 (0x2)
+pred=02 (0b0010), b=0 => expected=0b01 (0x1)
+pred=02 (0b0010), b=1 => expected=0b10 (0x2)
+pred=03 (0b0011), b=0 => expected=0b00 (0x0)
+pred=03 (0b0011), b=1 => expected=0b11 (0x3)
+pred=04 (0b0100), b=0 => expected=0b10 (0x2)
+pred=04 (0b0100), b=1 => expected=0b01 (0x1)
+pred=05 (0b0101), b=0 => expected=0b11 (0x3)
+pred=05 (0b0101), b=1 => expected=0b00 (0x0)
+pred=06 (0b0110), b=0 => expected=0b11 (0x3)
+pred=06 (0b0110), b=1 => expected=0b00 (0x0)
+pred=07 (0b0111), b=0 => expected=0b10 (0x2)
+pred=07 (0b0111), b=1 => expected=0b01 (0x1)
+pred=08 (0b1000), b=0 => expected=0b11 (0x3)
+pred=08 (0b1000), b=1 => expected=0b00 (0x0)
+pred=09 (0b1001), b=0 => expected=0b10 (0x2)
+pred=09 (0b1001), b=1 => expected=0b01 (0x1)
+pred=10 (0b1010), b=0 => expected=0b10 (0x2)
+pred=10 (0b1010), b=1 => expected=0b01 (0x1)
+pred=11 (0b1011), b=0 => expected=0b11 (0x3)
+pred=11 (0b1011), b=1 => expected=0b00 (0x0)
+pred=12 (0b1100), b=0 => expected=0b01 (0x1)
+pred=12 (0b1100), b=1 => expected=0b10 (0x2)
+pred=13 (0b1101), b=0 => expected=0b00 (0x0)
+pred=13 (0b1101), b=1 => expected=0b11 (0x3)
+pred=14 (0b1110), b=0 => expected=0b00 (0x0)
+pred=14 (0b1110), b=1 => expected=0b11 (0x3)
+pred=15 (0b1111), b=0 => expected=0b01 (0x1)
+pred=15 (0b1111), b=1 => expected=0b10 (0x2)
+
+=== Summary ===
+Total test cases: 32
+Expected to pass: 32
+
+Use this output to verify your Verilog testbench.

@@ -5,7 +5,12 @@
 
 `default_nettype none
 
-module tt_um_example (
+module tt_um_example #(
+    parameter K = 5,
+    parameter D_TB = 32,
+    parameter G0_OCT = 023,
+    parameter G1_OCT = 035
+) (
     input  wire [7:0] ui_in,    // Dedicated inputs
     output wire [7:0] uo_out,   // Dedicated outputs
     input  wire [7:0] uio_in,   // IOs: Input path
@@ -14,12 +19,6 @@ module tt_um_example (
     input  wire       ena,      // always 1 when the design is powered, so you can ignore it
     input  wire       clk,      // clock
     input  wire       rst_n     // reset_n - low to reset
-    parameters (
-        parameter K = 5,
-        parameter D_TB = 32,
-        parameter G0_OCT = 023,
-        parameter G1_OCT = 035
-    )
 );
 
   // All output pins must be assigned. If not used, assign to 0.

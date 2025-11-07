@@ -1,0 +1,81 @@
+# Makefile for acs_core testbench
+
+# Compiler and simulator
+IVERILOG = iverilog
+VVP = vvp
+
+# Directories
+SRC_DIR = ../src
+
+# Files
+VERILOG_SRC = $(SRC_DIR)/acs_core.v
+VERILOG_TB = tb_acs_core.v
+
+# Output files
+VVP_OUT = tb_acs_core.vvp
+VCD_OUT = tb_acs_core.vcd
+SIM_OUT = sim_acs_core.txt
+
+# Default target
+.PHONY: all
+all: test
+
+# Compile Verilog testbench
+$(VVP_OUT): $(VERILOG_TB) $(VERILOG_SRC)
+	@echo "=== Compiling ACS Core testbench ==="
+	$(IVERILOG) -g2012 -o $@ $(VERILOG_TB) $(VERILOG_SRC)
+	@echo ""
+
+# Run Verilog simulation
+$(SIM_OUT): $(VVP_OUT)
+	@echo "=== Running ACS Core simulation ==="
+	$(VVP) $(VVP_OUT) | tee $@
+	@echo ""
+
+# Run test
+.PHONY: test
+test: $(SIM_OUT)
+	@echo "=== Test Complete ==="
+	@if grep -q "ALL TESTS PASSED" $(SIM_OUT); then \
+		echo "✓ SUCCESS: All tests passed!"; \
+		exit 0; \
+	elif grep -q "TESTS FAILED" $(SIM_OUT); then \
+		echo "✗ FAILURE: Some tests failed. Check $(SIM_OUT) for details."; \
+		exit 1; \
+	else \
+		echo "? UNKNOWN: Could not determine test status"; \
+		exit 1; \
+	fi
+
+# View waveform
+.PHONY: wave
+wave: $(VCD_OUT)
+	@echo "=== Opening waveform viewer ==="
+	@if command -v gtkwave > /dev/null; then \
+		gtkwave $(VCD_OUT) & \
+	else \
+		echo "Error: gtkwave not found"; \
+	fi
+
+# Clean build artifacts
+.PHONY: clean
+clean:
+	@echo "=== Cleaning build artifacts ==="
+	rm -f $(VVP_OUT) $(VCD_OUT) $(SIM_OUT)
+	@echo "Clean complete"
+
+# Help
+.PHONY: help
+help:
+	@echo "ACS Core Testbench Makefile"
+	@echo ""
+	@echo "Usage:"
+	@echo "  make        - Run testbench"
+	@echo "  make test   - Run testbench"
+	@echo "  make wave   - Open waveform viewer"
+	@echo "  make clean  - Remove generated files"
+	@echo ""
+	@echo "Tests:"
+	@echo "  - Obvious cases: clear winner scenarios"
+	@echo "  - Edge cases: equal/near-equal metrics"
+	@echo "  - Boundary cases: overflow and max values"

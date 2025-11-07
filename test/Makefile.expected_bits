@@ -1,0 +1,149 @@
+# Makefile for expected_bits testbench
+# This tests the expected_bits module exhaustively against the C golden model
+
+# Compiler and simulator settings
+CC = gcc
+IVERILOG = iverilog
+VVP = vvp
+
+# Parameters (can override with make K=7 for example)
+K ?= 5
+M = $(shell echo $$(($(K) - 1)))
+G0_OCT ?= 023
+G1_OCT ?= 035
+
+# Directories
+SRC_DIR = ../src
+C_DIR = ../c-tests
+
+# Files
+VERILOG_SRC = $(SRC_DIR)/expected_bits.v
+VERILOG_TB = tb_expected_bits.v
+C_GOLDEN = $(C_DIR)/viterbi_golden.c
+
+# Output files
+VVP_OUT = tb_expected_bits.vvp
+VCD_OUT = tb_expected_bits.vcd
+C_EXE = test_expected_bits
+TEST_VECTORS = test_vectors_expected_bits.txt
+SIM_OUT = sim_output.txt
+
+# Default target
+.PHONY: all
+all: test
+
+# Compile C golden model
+$(C_EXE): $(C_GOLDEN)
+	@echo "=== Compiling C golden model ==="
+	$(CC) -DK=$(K) -DG0_OCT=$(G0_OCT) -DG1_OCT=$(G1_OCT) -DTEST_VECTORS -o $@ $<
+
+# Generate test vectors from C golden model
+$(TEST_VECTORS): $(C_EXE)
+	@echo "=== Generating test vectors from C golden model ==="
+	./$(C_EXE) > $@
+	@echo "Generated $@ with $$(wc -l < $@ | tr -d ' ') test vectors"
+	@echo ""
+
+# Compile Verilog testbench
+$(VVP_OUT): $(VERILOG_TB) $(VERILOG_SRC)
+	@echo "=== Compiling Verilog testbench ==="
+	$(IVERILOG) -g2012 -o $@ $(VERILOG_TB) $(VERILOG_SRC)
+	@echo ""
+
+# Run Verilog simulation
+$(SIM_OUT): $(VVP_OUT) $(TEST_VECTORS)
+	@echo "=== Running Verilog simulation with test vectors ==="
+	$(VVP) $(VVP_OUT) | tee $@
+	@echo ""
+
+# Run full test
+.PHONY: test
+test: $(TEST_VECTORS) $(SIM_OUT)
+	@echo "=== Test Complete ==="
+	@echo "Test vectors: $(TEST_VECTORS)"
+	@echo "Simulation output: $(SIM_OUT)"
+	@echo ""
+	@if grep -q "ALL TESTS PASSED" $(SIM_OUT); then \
+		echo "✓ SUCCESS: All tests passed!"; \
+		exit 0; \
+	elif grep -q "TESTS FAILED" $(SIM_OUT); then \
+		echo "✗ FAILURE: Some tests failed. Check $(SIM_OUT) for details."; \
+		exit 1; \
+	else \
+		echo "? UNKNOWN: Could not determine test status"; \
+		exit 1; \
+	fi
+
+# View waveform
+.PHONY: wave
+wave: $(VCD_OUT)
+	@echo "=== Opening waveform viewer ==="
+	@if command -v gtkwave > /dev/null; then \
+		gtkwave $(VCD_OUT) & \
+	else \
+		echo "Error: gtkwave not found. Install it or use 'surfer $(VCD_OUT)'"; \
+	fi
+
+# Compare C and Verilog outputs (useful for debugging)
+.PHONY: compare
+compare: $(TEST_VECTORS) $(SIM_OUT)
+	@echo "=== Test Vector Information ==="
+	@echo "Number of test vectors: $$(grep -v '^//' $(TEST_VECTORS) | wc -l | tr -d ' ')"
+	@head -n 5 $(TEST_VECTORS)
+	@echo "..."
+	@echo ""
+	@echo "=== Simulation Results ==="
+	@grep -E "(PASSED|FAILED|MISMATCH)" $(SIM_OUT) || echo "Check $(SIM_OUT) for details"
+
+# Run just the Verilog simulation (quick)
+.PHONY: sim
+sim: $(SIM_OUT)
+
+# Run just the C golden model
+.PHONY: golden
+golden: $(C_EXE)
+	@echo "=== Running C golden model (human-readable) ==="
+	./$(C_EXE)
+
+# Generate and display test vectors
+.PHONY: vectors
+vectors: $(TEST_VECTORS)
+	@echo "=== Test Vectors ==="
+	@cat $(TEST_VECTORS)
+
+# Clean build artifacts
+.PHONY: clean
+clean:
+	@echo "=== Cleaning build artifacts ==="
+	rm -f $(VVP_OUT) $(VCD_OUT) $(C_EXE) $(TEST_VECTORS) $(SIM_OUT)
+	@echo "Clean complete"
+
+# Help target
+.PHONY: help
+help:
+	@echo "Expected Bits Testbench Makefile"
+	@echo ""
+	@echo "Usage:"
+	@echo "  make              - Run full test (generate vectors + simulate + check)"
+	@echo "  make test         - Same as above"
+	@echo "  make vectors      - Generate and display test vectors"
+	@echo "  make sim          - Run only Verilog simulation"
+	@echo "  make golden       - Run only C golden model (human-readable)"
+	@echo "  make wave         - Open waveform viewer (requires gtkwave)"
+	@echo "  make compare      - Show test vector and simulation info"
+	@echo "  make clean        - Remove all generated files"
+	@echo ""
+	@echo "Parameters (override with make PARAM=value):"
+	@echo "  K=5               - Constraint length (default: 5)"
+	@echo "  G0_OCT=023        - Generator polynomial 0 in octal (default: 023)"
+	@echo "  G1_OCT=035        - Generator polynomial 1 in octal (default: 035)"
+	@echo ""
+	@echo "Test Flow:"
+	@echo "  1. C golden model generates test vectors (pred, b, expected)"
+	@echo "  2. Verilog testbench reads vectors and applies to DUT"
+	@echo "  3. Testbench compares DUT output vs expected from vectors"
+	@echo "  4. Reports pass/fail with first mismatch details"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make K=7 G0_OCT=0171 G1_OCT=0133"
+	@echo "  make clean test"
