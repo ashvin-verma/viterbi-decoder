@@ -1,0 +1,55 @@
+# Makefile for Viterbi Decoder Comprehensive Test Suite
+# Levels 0-2: Noiseless, Trellis End-Effects, Single-Error Correction
+
+IVERILOG = iverilog
+VVP = vvp
+GTKWAVE = gtkwave
+
+# Source files
+SRC_DIR = ../src
+TEST_DIR = .
+
+SOURCES = \
+	$(SRC_DIR)/ham2.v \
+	$(SRC_DIR)/expected_bits.v \
+	$(SRC_DIR)/branch_metric.v \
+	$(SRC_DIR)/acs_core.v \
+	$(SRC_DIR)/pm_bank.v \
+	$(SRC_DIR)/survivor_mem.v \
+	$(SRC_DIR)/traceback_v2.v \
+	$(SRC_DIR)/viterbi_core.v
+
+TB = $(TEST_DIR)/tb_viterbi_levels.v
+VVP_OUT = tb_viterbi_levels.vvp
+VCD_OUT = tb_viterbi_levels.vcd
+
+# Verilog flags
+VFLAGS = -g2012 -Wall
+
+.PHONY: all compile run clean view
+
+all: run
+
+compile: $(VVP_OUT)
+
+$(VVP_OUT): $(TB) $(SOURCES)
+	$(IVERILOG) $(VFLAGS) -o $@ $(TB) $(SOURCES)
+
+run: $(VVP_OUT)
+	$(VVP) $(VVP_OUT)
+
+view: $(VCD_OUT)
+	$(GTKWAVE) $(VCD_OUT) &
+
+clean:
+	rm -f $(VVP_OUT) $(VCD_OUT)
+
+help:
+	@echo "Viterbi Decoder Test Makefile"
+	@echo ""
+	@echo "Targets:"
+	@echo "  make         - Compile and run all tests"
+	@echo "  make compile - Compile testbench only"
+	@echo "  make run     - Run tests"
+	@echo "  make view    - Open waveform viewer"
+	@echo "  make clean   - Remove generated files"

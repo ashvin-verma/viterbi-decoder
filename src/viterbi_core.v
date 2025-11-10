@@ -71,12 +71,15 @@ module tt_um_viterbi_core #(
     logic [$clog2(D)-1:0]         tb_time;
     logic [M-1:0]                 tb_state;
     logic                         trace_surv_bit;
-    logic                         tb_dec_valid;
-    logic                         tb_dec_bit;
+    logic                         tb_warmed_up;  // Added: true after D symbols committed
+
+    // Traceback v2 handshake/signals
+    localparam int TIME_W = TRACE_ADDR_W;
     logic                         tb_busy;
     logic                         tb_start;
-    logic [TRACE_ADDR_W-1:0]      tb_start_time;
+    logic [TIME_W-1:0]            tb_start_time;
     logic [M-1:0]                 tb_start_state;
+
 `ifdef VITERBI_CORE_DEBUG
     integer                       dbg_accepts;
     integer                       dbg_commits;
@@ -120,6 +123,7 @@ module tt_um_viterbi_core #(
                 end
             end
             ST_COMMIT: begin
+                // Survivor row and PM swap happen here (one cycle)
                 state_next = ST_TRACE;
             end
             ST_TRACE: begin
@@ -287,18 +291,42 @@ module tt_um_viterbi_core #(
         .surv_bit(trace_surv_bit)
     );
 
+    // End-state mux (force to 0 if requested)
     wire [M-1:0] s_end_mux = force_state0 ? {M{1'b0}} : s_end_state;
-    wire [TRACE_ADDR_W-1:0] surv_row_time =
-        (surv_wr_ptr == {TRACE_ADDR_W{1'b0}})
-            ? TRACE_ADDR_W'(D > 0 ? D - 1 : 0)
-            : (surv_wr_ptr - TRACE_ADDR_W'(1));
 
-    assign tb_start       = (state == ST_COMMIT);
-    assign tb_start_time  = surv_row_time;
-    assign tb_start_state = s_end_mux;
+    // Generate a one-cycle start pulse and capture start parameters
+    // right after we commit the survivor row.
+    // Only start traceback after warmup (D symbols committed).
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            tb_start       <= 1'b0;
+            tb_start_time  <= {TIME_W{1'b0}};
+            tb_start_state <= {M{1'b0}};
+            tb_warmed_up   <= 1'b0;
+        end else begin
+            tb_start <= 1'b0; // default
 
+            if (state == ST_COMMIT) begin
+                // Track warmup: set warmed_up when wr_ptr wraps (reaches 0 after incrementing)
+                if (surv_wr_ptr == {TIME_W{1'b0}}) begin
+                    tb_warmed_up <= 1'b1;
+                end
+                
+                // Only start traceback after warmup
+                if (tb_warmed_up || (surv_wr_ptr == {TIME_W{1'b0}})) begin
+                    tb_start       <= 1'b1;
+                    tb_start_state <= s_end_mux;
+                    tb_start_time  <= (surv_wr_ptr == {TIME_W{1'b0}})
+                                      ? TIME_W'(D > 0 ? D - 1 : 0)
+                                      : (surv_wr_ptr - TIME_W'(1));
+                end
+            end
+        end
+    end
+
+    // Traceback: run exactly D steps per symbol, emit last bit
     traceback_v2 #(
-        .M (M),
+        .K (K),
         .D (D)
     ) tb_core (
         .clk          (clk),
@@ -311,12 +339,9 @@ module tt_um_viterbi_core #(
         .tb_state     (tb_state),
         .tb_surv_bit  (trace_surv_bit),
         .busy         (tb_busy),
-        .dec_bit_valid(tb_dec_valid),
-        .dec_bit      (tb_dec_bit)
+        .dec_bit_valid(dec_bit_valid),
+        .dec_bit      (dec_bit)
     );
-
-    assign dec_bit_valid = tb_dec_valid;
-    assign dec_bit       = tb_dec_bit;
 
 `ifdef VITERBI_CORE_DEBUG
     final begin

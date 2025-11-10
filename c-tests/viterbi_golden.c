@@ -164,6 +164,94 @@ int viterbi_decode(const uint8_t *rx_syms, int T, uint8_t *out_bits) {
     return N;
 }
 
+// Streaming hard-decision Viterbi matching RTL schedule (one output per symbol)
+// Emits the last survivor bit after a D-step traceback starting at time=wr_ptr-1.
+// Returns T outputs in out_bits[t], where out_bits[t] corresponds to trellis bit at (t-(D-1)).
+int viterbi_decode_streaming(const uint8_t *rx_syms, int T, int D, uint8_t *out_bits, int force_state0) {
+    const int m = K - 1;
+    const int S = 1 << m;
+    const uint32_t g0 = G0_OCT;
+    const uint32_t g1 = G1_OCT;
+
+    // Path metrics
+    int *pm_prev = (int*)malloc(S * sizeof(int));
+    int *pm_curr = (int*)malloc(S * sizeof(int));
+    if (!pm_prev || !pm_curr) { fprintf(stderr, "OOM pm\n"); exit(1); }
+
+    // Survivor memory: D x S ring buffer
+    uint8_t *mem = (uint8_t*)malloc(D * S);
+    if (!mem) { fprintf(stderr, "OOM mem\n"); exit(1); }
+    memset(mem, 0, D * S);
+    int wr_ptr = 0;
+
+    // Init metrics (start in state 0)
+    for (int s = 0; s < S; ++s) pm_prev[s] = (s == 0) ? 0 : INT_MAX / 4;
+
+    for (int t = 0; t < T; ++t) {
+        uint8_t r = rx_syms[t] & 0x3u;
+
+        int bestm = INT_MAX/4;
+        int bests = 0;
+
+        // Sweep s_next = 0..S-1
+        for (int s_next = 0; s_next < S; ++s_next) {
+            uint32_t p0 = (uint32_t)(s_next >> 1);
+            uint32_t p1 = (uint32_t)((s_next >> 1) | (1u << (m - 1)));
+            uint8_t  b_t = (uint8_t)(s_next & 1u);
+
+            uint8_t e0 = conv_sym_from_pred(p0, b_t, g0, g1);
+            uint8_t e1 = conv_sym_from_pred(p1, b_t, g0, g1);
+            int bm0 = ham2(r, e0);
+            int bm1 = ham2(r, e1);
+
+            int m0 = pm_prev[p0] + bm0;
+            int m1 = pm_prev[p1] + bm1;
+
+            // Tie-break: p0 wins on ties
+            int choose_p1 = (m1 < m0);
+            int pm_out = choose_p1 ? m1 : m0;
+
+            // Store survivor bit for this destination state
+            mem[wr_ptr * S + s_next] = (uint8_t)choose_p1;
+
+            // Track argmin over pm_out
+            if (pm_out < bestm) { bestm = pm_out; bests = s_next; }
+
+            pm_curr[s_next] = pm_out;
+        }
+
+        // Swap PM banks
+        int *tmp = pm_prev; pm_prev = pm_curr; pm_curr = tmp;
+
+        // Advance survivor write pointer
+        wr_ptr = (wr_ptr + 1) % D;
+
+        // Traceback burst (D steps), starting from time=wr_ptr-1 and best state
+        int time_idx = (wr_ptr == 0) ? (D - 1) : (wr_ptr - 1);
+        int state    = force_state0 ? 0 : bests;
+        uint8_t last_bit = 0;
+
+        for (int k = 0; k < D; ++k) {
+            uint8_t bit = mem[time_idx * S + state]; // b[time_idx] that led into 'state'
+            last_bit = bit;
+
+            if (bit)
+                state = (state >> 1) | (1u << (m - 1));
+            else
+                state = (state >> 1);
+
+            time_idx = (time_idx == 0) ? (D - 1) : (time_idx - 1);
+        }
+
+        out_bits[t] = last_bit;
+    }
+
+    free(mem);
+    free(pm_prev);
+    free(pm_curr);
+    return T;
+}
+
 // #define TEST_MAIN
 
 void bsc_hard(uint8_t *syms, int T, double p) {

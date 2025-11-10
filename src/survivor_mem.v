@@ -36,6 +36,9 @@ module survivor_mem #(
     end
   end
 
-  assign surv_bit = mem[rd_time][rd_state];
+  // Write-first on collision (if client ever reads the row being written)
+  wire [$clog2(D)-1:0] wr_idx = wr_ptr;
+  assign surv_bit = (wr_en && (rd_time == wr_idx)) ? surv_row[rd_state]
+                                                   : mem[rd_time][rd_state];
 
 endmodule

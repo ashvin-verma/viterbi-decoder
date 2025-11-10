@@ -20,7 +20,8 @@ module traceback #(
     
     // Decoded output stream
     output reg dec_bit_valid,
-    output reg dec_bit
+    output reg dec_bit,
+    output reg busy  // Added: indicates traceback is active or survivor memory is being filled
 );
 
     // Simplified streaming design:
@@ -52,8 +53,12 @@ module traceback #(
             tb_state <= 0;
             dec_bit_valid <= 0;
             dec_bit <= 0;
+            busy <= 1;  // Busy during warmup
         end else begin
             dec_bit_valid <= 0;  // Default
+            
+            // Update busy signal: busy during warmup, or when traceback is active/pending
+            busy <= !streaming_mode || tb_active || pending_start;
             
             // Detect wr_ptr changes
             if (wr_ptr_advanced) begin
@@ -105,9 +110,9 @@ module traceback #(
                     
                     tb_step <= tb_step + 1;
                     
-                    // Last step: output the bit
+                    // Last step: output the bit  
                     if (tb_step == D - 1) begin
-                        dec_bit <= current_state[0];  // LSB is info bit
+                        dec_bit <= tb_surv_bit;  // Output the survivor bit directly!
                         dec_bit_valid <= 1;
                         tb_active <= 0;
                     end
@@ -115,11 +120,4 @@ module traceback #(
             end
         end
     end
-
-endmodule
-                end
-            end
-        end
-    end
-
 endmodule

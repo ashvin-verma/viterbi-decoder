@@ -82,6 +82,7 @@ module traceback_v2 #(
                     tb_time  <= prev_time;
                     depth    <= depth + COUNT_W'(1);
                     if (depth == COUNT_W'(D > 0 ? D - 1 : 0)) begin
+                        // Output survivor bit directly (matches C golden model)
                         dec_bit       <= surv_bit_q;
                         dec_bit_valid <= 1'b1;
                         busy          <= 1'b0;
