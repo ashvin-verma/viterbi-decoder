@@ -1,8 +1,12 @@
 ![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
 
-# Tiny Tapeout Verilog Project Template
+# Convolutional Encoder - Tiny Tapeout Project
 
 - [Read the documentation for project](docs/info.md)
+
+## Overview
+
+This project implements a rate 1/2 convolutional encoder with constraint length K=3. It takes single input bits and produces two output symbol bits for forward error correction.
 
 ## What is Tiny Tapeout?
 

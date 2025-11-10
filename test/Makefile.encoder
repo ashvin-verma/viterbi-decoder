@@ -1,0 +1,65 @@
+# Makefile for convolutional encoder tests
+
+# Tools
+IVERILOG = iverilog
+VVP = vvp
+GCC = gcc
+
+# Directories
+SRC_DIR = ../src
+TEST_DIR = .
+C_TEST_DIR = ../c-tests
+
+# Source files
+ENCODER_SRC = $(SRC_DIR)/conv_encoder.v
+TB_SRC = $(TEST_DIR)/tb_conv_encoder_new.v
+
+# C test programs
+C_GOLDEN = $(C_TEST_DIR)/encoder_golden
+
+# Output files
+VVP_OUT = tb_conv_encoder_new.vvp
+VCD_OUT = tb_conv_encoder_new.vcd
+VECTORS_OUT = encoder_test_vectors.txt
+
+# Default target
+all: sim_encoder
+
+# Compile C golden reference
+$(C_GOLDEN): $(C_TEST_DIR)/encoder_golden.c
+	$(GCC) -O2 -Wall -o $(C_GOLDEN) $(C_TEST_DIR)/encoder_golden.c -lm
+
+# Generate test vectors
+vectors: $(C_GOLDEN)
+	$(C_GOLDEN) 12345 100 1 $(VECTORS_OUT)
+
+# Compile Verilog testbench
+compile_encoder: $(ENCODER_SRC) $(TB_SRC)
+	$(IVERILOG) -g2005 -o $(VVP_OUT) $(ENCODER_SRC) $(TB_SRC)
+
+# Run simulation
+sim_encoder: compile_encoder
+	$(VVP) $(VVP_OUT)
+
+# Run with waveform viewer (requires GTKWave)
+wave: sim_encoder
+	@if [ -f $(VCD_OUT) ]; then \
+		gtkwave $(VCD_OUT) &\
+	else \
+		echo "VCD file not found. Run 'make sim_encoder' first."; \
+	fi
+
+# Run C golden reference tests
+test_c: $(C_GOLDEN)
+	$(C_GOLDEN)
+
+# Clean build artifacts
+clean:
+	rm -f $(VVP_OUT) $(VCD_OUT) $(VECTORS_OUT)
+	rm -f $(C_GOLDEN)
+	rm -f tb_conv_encoder.vvp tb_conv_encoder.vcd
+
+# Run all tests
+test_all: test_c sim_encoder
+
+.PHONY: all compile_encoder sim_encoder wave test_c vectors clean test_all

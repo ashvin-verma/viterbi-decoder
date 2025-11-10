@@ -9,12 +9,12 @@ You can also include images in this folder and reference them in the markdown. E
 
 ## How it works
 
-This is a Viterbi decoder, meant to recover the original message from a corrupted message. It takes inputs and sends outputs over UART.
+This is a convolutional encoder that encodes input bits into symbols for error correction. It implements a rate 1/2 convolutional encoder with constraint length K=3, using generator polynomials G0=7 (octal) and G1=5 (octal). For each input bit, it produces two output symbol bits.
 
 ## How to test
 
-TODO: Fill this in with instructions on baremetal tests
+Provide input bits through the BIT_IN pin with BIT_VALID high. The encoder will output two symbol bits (SYM_OUT0, SYM_OUT1) when SYM_VALID goes high.
 
 ## External hardware
 
-FPGA or microcontroller to generate test stimulus and log output.
+FPGA or microcontroller to provide input bits and capture encoded symbols.

@@ -1,9 +1,9 @@
 # Tiny Tapeout project information
 project:
-  title:        "Viterbi Decoder"      # Project title
+  title:        "Convolutional Encoder"      # Project title
   author:       "Ashvin Verma"      # Your name
   discord:      "ashverma"      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  "Skeleton Viterbi decoder core with streaming symbol interface"      # One line description of what your project does
+  description:  "Rate 1/2 convolutional encoder with streaming interface"      # One line description of what your project does
   language:     "Verilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
   clock_hz:     50000000       # Clock frequency in Hz (or 0 if not applicable)
 
@@ -11,56 +11,47 @@ project:
   tiles: "1x1"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
 
   # Your top module name must start with "tt_um_". Make it unique by including your github username:
-  top_module:  "tt_um_ashvin_viterbi"
+  top_module:  "tt_um_ashvin_conv_encoder"
 
   # List your project's source files here.
   # Source files must be in ./src and you must list each source file separately, one per line.
   # Don't forget to also update `PROJECT_SOURCES` in test/Makefile.
   source_files:
     - "project.v"
-    - "viterbi_core.v"
-    - "branch_metric.v"
-    - "expected_bits.v"
-    - "ham2.v"
-    - "acs_core.v"
-    - "pm_bank.v"
-    - "survivor_mem.v"
-    - "traceback.v"
-    - "sym_unpacker_4x.v"
-    - "bit_packer_8x.v"
+    - "encoder_helper.v"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 # This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).
 pinout:
   # Inputs
-  ui[0]: ""
-  ui[1]: "UART_RX"
+  ui[0]: "BIT_IN"
+  ui[1]: "BIT_VALID"
   ui[2]: "RST_N"
-  ui[3]: "SYM_VALID"
-  ui[4]: "SYM_BIT0"
-  ui[5]: "SYM_BIT1"
-  ui[6]: "SYM_BIT2"
-  ui[7]: "SYM_BIT3"
+  ui[3]: ""
+  ui[4]: ""
+  ui[5]: ""
+  ui[6]: ""
+  ui[7]: ""
 
   # Outputs
-  uo[0]: "UART_TX"
-  uo[1]: "DEC_VALID"
-  uo[2]: "DEC_BIT0"
-  uo[3]: "DEC_BIT1"
-  uo[4]: "TRACE_RDY"
-  uo[5]: "TRACE_ERR"
-  uo[6]: "DBG_PM0"
-  uo[7]: "DBG_PM1"
+  uo[0]: "SYM_OUT0"
+  uo[1]: "SYM_OUT1"
+  uo[2]: "SYM_VALID"
+  uo[3]: ""
+  uo[4]: ""
+  uo[5]: ""
+  uo[6]: ""
+  uo[7]: ""
 
   # Bidirectional pins
-  uio[0]: "DBG_IO0"
-  uio[1]: "DBG_IO1"
-  uio[2]: "DBG_IO2"
-  uio[3]: "DBG_IO3"
-  uio[4]: "DBG_IO4"
-  uio[5]: "DBG_IO5"
-  uio[6]: "DBG_IO6"
-  uio[7]: "DBG_IO7"
+  uio[0]: ""
+  uio[1]: ""
+  uio[2]: ""
+  uio[3]: ""
+  uio[4]: ""
+  uio[5]: ""
+  uio[6]: ""
+  uio[7]: ""
 
 # Do not change!
 yaml_version: 6

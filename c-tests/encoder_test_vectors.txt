@@ -1,0 +1,224 @@
+// Test vectors for convolutional encoder
+// K=3, G0=7, G1=5
+// Input bits: 100, Output symbols: 102
+
+// Input bits (binary):
+// 10001100010100000011011111001101
+// 10010011010010100010111101001000
+// 11000111100110110101101111000011
+// 1100
+
+// Expected output symbols (2-bit):
+// 03 02 03 00 03 01 01 03 00 03 02 00 02 03 00 00 
+// 00 00 03 01 01 00 01 02 02 02 01 03 03 01 01 00 
+// 01 01 03 03 02 03 03 01 01 00 02 03 03 02 00 02 
+// 03 00 03 02 00 01 02 02 01 00 02 03 03 02 03 00 
+// 03 01 01 03 00 03 01 02 02 01 03 03 01 01 00 01 
+// 01 00 02 00 01 01 00 01 02 02 01 03 00 00 03 01 
+// 02 02 01 03 00 00 
+
+// Input bits for testbench:
+in_bits[0] = 1'b1;
+in_bits[1] = 1'b0;
+in_bits[2] = 1'b0;
+in_bits[3] = 1'b0;
+in_bits[4] = 1'b1;
+in_bits[5] = 1'b1;
+in_bits[6] = 1'b0;
+in_bits[7] = 1'b0;
+in_bits[8] = 1'b0;
+in_bits[9] = 1'b1;
+in_bits[10] = 1'b0;
+in_bits[11] = 1'b1;
+in_bits[12] = 1'b0;
+in_bits[13] = 1'b0;
+in_bits[14] = 1'b0;
+in_bits[15] = 1'b0;
+in_bits[16] = 1'b0;
+in_bits[17] = 1'b0;
+in_bits[18] = 1'b1;
+in_bits[19] = 1'b1;
+in_bits[20] = 1'b0;
+in_bits[21] = 1'b1;
+in_bits[22] = 1'b1;
+in_bits[23] = 1'b1;
+in_bits[24] = 1'b1;
+in_bits[25] = 1'b1;
+in_bits[26] = 1'b0;
+in_bits[27] = 1'b0;
+in_bits[28] = 1'b1;
+in_bits[29] = 1'b1;
+in_bits[30] = 1'b0;
+in_bits[31] = 1'b1;
+in_bits[32] = 1'b1;
+in_bits[33] = 1'b0;
+in_bits[34] = 1'b0;
+in_bits[35] = 1'b1;
+in_bits[36] = 1'b0;
+in_bits[37] = 1'b0;
+in_bits[38] = 1'b1;
+in_bits[39] = 1'b1;
+in_bits[40] = 1'b0;
+in_bits[41] = 1'b1;
+in_bits[42] = 1'b0;
+in_bits[43] = 1'b0;
+in_bits[44] = 1'b1;
+in_bits[45] = 1'b0;
+in_bits[46] = 1'b1;
+in_bits[47] = 1'b0;
+in_bits[48] = 1'b0;
+in_bits[49] = 1'b0;
+in_bits[50] = 1'b1;
+in_bits[51] = 1'b0;
+in_bits[52] = 1'b1;
+in_bits[53] = 1'b1;
+in_bits[54] = 1'b1;
+in_bits[55] = 1'b1;
+in_bits[56] = 1'b0;
+in_bits[57] = 1'b1;
+in_bits[58] = 1'b0;
+in_bits[59] = 1'b0;
+in_bits[60] = 1'b1;
+in_bits[61] = 1'b0;
+in_bits[62] = 1'b0;
+in_bits[63] = 1'b0;
+in_bits[64] = 1'b1;
+in_bits[65] = 1'b1;
+in_bits[66] = 1'b0;
+in_bits[67] = 1'b0;
+in_bits[68] = 1'b0;
+in_bits[69] = 1'b1;
+in_bits[70] = 1'b1;
+in_bits[71] = 1'b1;
+in_bits[72] = 1'b1;
+in_bits[73] = 1'b0;
+in_bits[74] = 1'b0;
+in_bits[75] = 1'b1;
+in_bits[76] = 1'b1;
+in_bits[77] = 1'b0;
+in_bits[78] = 1'b1;
+in_bits[79] = 1'b1;
+in_bits[80] = 1'b0;
+in_bits[81] = 1'b1;
+in_bits[82] = 1'b0;
+in_bits[83] = 1'b1;
+in_bits[84] = 1'b1;
+in_bits[85] = 1'b0;
+in_bits[86] = 1'b1;
+in_bits[87] = 1'b1;
+in_bits[88] = 1'b1;
+in_bits[89] = 1'b1;
+in_bits[90] = 1'b0;
+in_bits[91] = 1'b0;
+in_bits[92] = 1'b0;
+in_bits[93] = 1'b0;
+in_bits[94] = 1'b1;
+in_bits[95] = 1'b1;
+in_bits[96] = 1'b1;
+in_bits[97] = 1'b1;
+in_bits[98] = 1'b0;
+in_bits[99] = 1'b0;
+
+// Expected symbols for testbench:
+expected_syms[0] = 2'b11;
+expected_syms[1] = 2'b10;
+expected_syms[2] = 2'b11;
+expected_syms[3] = 2'b00;
+expected_syms[4] = 2'b11;
+expected_syms[5] = 2'b01;
+expected_syms[6] = 2'b01;
+expected_syms[7] = 2'b11;
+expected_syms[8] = 2'b00;
+expected_syms[9] = 2'b11;
+expected_syms[10] = 2'b10;
+expected_syms[11] = 2'b00;
+expected_syms[12] = 2'b10;
+expected_syms[13] = 2'b11;
+expected_syms[14] = 2'b00;
+expected_syms[15] = 2'b00;
+expected_syms[16] = 2'b00;
+expected_syms[17] = 2'b00;
+expected_syms[18] = 2'b11;
+expected_syms[19] = 2'b01;
+expected_syms[20] = 2'b01;
+expected_syms[21] = 2'b00;
+expected_syms[22] = 2'b01;
+expected_syms[23] = 2'b10;
+expected_syms[24] = 2'b10;
+expected_syms[25] = 2'b10;
+expected_syms[26] = 2'b01;
+expected_syms[27] = 2'b11;
+expected_syms[28] = 2'b11;
+expected_syms[29] = 2'b01;
+expected_syms[30] = 2'b01;
+expected_syms[31] = 2'b00;
+expected_syms[32] = 2'b01;
+expected_syms[33] = 2'b01;
+expected_syms[34] = 2'b11;
+expected_syms[35] = 2'b11;
+expected_syms[36] = 2'b10;
+expected_syms[37] = 2'b11;
+expected_syms[38] = 2'b11;
+expected_syms[39] = 2'b01;
+expected_syms[40] = 2'b01;
+expected_syms[41] = 2'b00;
+expected_syms[42] = 2'b10;
+expected_syms[43] = 2'b11;
+expected_syms[44] = 2'b11;
+expected_syms[45] = 2'b10;
+expected_syms[46] = 2'b00;
+expected_syms[47] = 2'b10;
+expected_syms[48] = 2'b11;
+expected_syms[49] = 2'b00;
+expected_syms[50] = 2'b11;
+expected_syms[51] = 2'b10;
+expected_syms[52] = 2'b00;
+expected_syms[53] = 2'b01;
+expected_syms[54] = 2'b10;
+expected_syms[55] = 2'b10;
+expected_syms[56] = 2'b01;
+expected_syms[57] = 2'b00;
+expected_syms[58] = 2'b10;
+expected_syms[59] = 2'b11;
+expected_syms[60] = 2'b11;
+expected_syms[61] = 2'b10;
+expected_syms[62] = 2'b11;
+expected_syms[63] = 2'b00;
+expected_syms[64] = 2'b11;
+expected_syms[65] = 2'b01;
+expected_syms[66] = 2'b01;
+expected_syms[67] = 2'b11;
+expected_syms[68] = 2'b00;
+expected_syms[69] = 2'b11;
+expected_syms[70] = 2'b01;
+expected_syms[71] = 2'b10;
+expected_syms[72] = 2'b10;
+expected_syms[73] = 2'b01;
+expected_syms[74] = 2'b11;
+expected_syms[75] = 2'b11;
+expected_syms[76] = 2'b01;
+expected_syms[77] = 2'b01;
+expected_syms[78] = 2'b00;
+expected_syms[79] = 2'b01;
+expected_syms[80] = 2'b01;
+expected_syms[81] = 2'b00;
+expected_syms[82] = 2'b10;
+expected_syms[83] = 2'b00;
+expected_syms[84] = 2'b01;
+expected_syms[85] = 2'b01;
+expected_syms[86] = 2'b00;
+expected_syms[87] = 2'b01;
+expected_syms[88] = 2'b10;
+expected_syms[89] = 2'b10;
+expected_syms[90] = 2'b01;
+expected_syms[91] = 2'b11;
+expected_syms[92] = 2'b00;
+expected_syms[93] = 2'b00;
+expected_syms[94] = 2'b11;
+expected_syms[95] = 2'b01;
+expected_syms[96] = 2'b10;
+expected_syms[97] = 2'b10;
+expected_syms[98] = 2'b01;
+expected_syms[99] = 2'b11;
+expected_syms[100] = 2'b00;
+expected_syms[101] = 2'b00;
