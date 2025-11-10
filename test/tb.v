@@ -33,14 +33,20 @@ module tb ();
   end
 
   // Instantiate DUT
-  tt_um_ashvin_viterbi #(
-      .K_SMALL(3),
-      .K_LARGE(7),
-      .G0_SMALL(8'o7),
-      .G1_SMALL(8'o5),
-      .G0_LARGE(8'o171),
-      .G1_LARGE(8'o133)
-  ) dut (
+  `ifdef GL_TEST
+    // Gate-level: parameters are hardcoded, don't override
+    tt_um_ashvin_viterbi dut (
+  `else
+    // RTL: use parameters
+    tt_um_ashvin_viterbi #(
+        .K_SMALL(3),
+        .K_LARGE(7),
+        .G0_SMALL(8'o7),
+        .G1_SMALL(8'o5),
+        .G0_LARGE(8'o171),
+        .G1_LARGE(8'o133)
+    ) dut (
+  `endif
       .ui_in(ui_in),
       .uo_out(uo_out),
       .uio_in(uio_in),

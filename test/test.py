@@ -51,9 +51,10 @@ async def test_encoder_mode0_k3(dut):
         encoder.ui_in.value = 0b00_000001 | (bit << 1)  # mode=00, in_valid=1, in_bit
         await RisingEdge(encoder.clk)
         
-        # Check output
-        out_valid = encoder.uo_out.value & 0x1
-        out_sym = (encoder.uo_out.value >> 1) & 0x3
+        # Check output (convert LogicArray to int before bitwise operations)
+        out_value = int(encoder.uo_out.value)
+        out_valid = out_value & 0x1
+        out_sym = (out_value >> 1) & 0x3
         
         if out_valid != 1:
             raise AssertionError(f"Bit {i}: out_valid={out_valid}, expected 1")
@@ -104,8 +105,9 @@ async def test_encoder_mode2_uart(dut):
     # Wait for output valid (with timeout)
     timeout = 100
     for _ in range(timeout):
-        if encoder.uo_out.value & 0x1:  # out_valid
-            dut._log.info(f"Output received: 0x{encoder.uo_out.value:02x}")
+        out_value = int(encoder.uo_out.value)
+        if out_value & 0x1:  # out_valid
+            dut._log.info(f"Output received: 0x{out_value:02x}")
             break
         await RisingEdge(encoder.clk)
     else:
