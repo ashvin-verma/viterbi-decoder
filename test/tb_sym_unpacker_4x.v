@@ -48,6 +48,9 @@ module tb_sym_unpacker_4x;
   integer byte_count;
   integer sym_count;
   reg [7:0] last_byte;
+  integer friend_idx;
+  reg [1:0] friend_expected [0:3];
+  reg friend_active;
   
   //===========================================================================
   // DUT Instantiation
@@ -133,6 +136,69 @@ module tb_sym_unpacker_4x;
       @(posedge clk);
     end
   endtask
+
+  // Friend's focused test: drive one byte and apply backpressure on 3rd symbol
+  task drive_friend_byte;
+    input [7:0] byte_val;
+    begin
+      friend_active = 1'b1;
+
+      friend_expected[0] = byte_val[1:0];
+      friend_expected[1] = byte_val[3:2];
+      friend_expected[2] = byte_val[5:4];
+      friend_expected[3] = byte_val[7:6];
+
+      // Ensure the DUT is ready for a fresh byte
+      while (!in_ready) @(posedge clk);
+
+      // Hold downstream while we inspect each symbol
+      rx_sym_ready = 0;
+
+      // Present the byte for exactly one beat
+      @(posedge clk);
+      in_valid = 1;
+      in_byte  = byte_val;
+
+      @(posedge clk);
+      in_valid = 0;
+
+      for (friend_idx = 0; friend_idx < 4; friend_idx = friend_idx + 1) begin
+        // Wait for the symbol to become valid
+    while (!rx_sym_valid) @(posedge clk);
+  #1;  // Allow nonblocking assignments to settle
+
+        if (rx_sym !== friend_expected[friend_idx]) begin
+          $display("    ✗ Symbol %0d mismatch: got=%b expected=%b",
+                   friend_idx, rx_sym, friend_expected[friend_idx]);
+          test_pass = 0;
+        end else begin
+          $display("    ✓ Symbol %0d matches (%b)", friend_idx, rx_sym);
+        end
+
+        if (friend_idx == 2) begin
+          // Hold ready low for one extra beat to check backpressure behaviour
+          @(posedge clk);
+          #1;
+          if (!rx_sym_valid || rx_sym !== friend_expected[friend_idx]) begin
+            $display("    ✗ Symbol %0d not held correctly during backpressure",
+                     friend_idx);
+            test_pass = 0;
+          end
+        end
+
+    // Pulse ready high for one cycle to consume the symbol
+    rx_sym_ready = 1;
+    @(posedge clk);
+    #1;
+    rx_sym_ready = 0;
+      end
+
+      // Let the DUT deassert valid and reassert in_ready
+      @(posedge clk);
+
+      friend_active = 1'b0;
+    end
+  endtask
   
   task start_test;
     input [255:0] description;
@@ -169,6 +235,7 @@ module tb_sym_unpacker_4x;
     fail_count = 0;
     byte_count = 0;
     sym_count = 0;
+  friend_active = 1'b0;
     
     $display("");
     $display("=======================================================");
@@ -444,6 +511,24 @@ module tb_sym_unpacker_4x;
     $display("    ✓ 100 bytes sent and 400 symbols received");
     
     end_test();
+    
+  //=========================================================================
+  // T8: Friend's targeted backpressure scenario
+  //=========================================================================
+  start_test("T8: Friend's targeted backpressure scenario");
+
+  apply_reset();
+
+  // Check two representative bytes with backpressure on symbol #2
+  $display("    Exercising byte 0xE4 (1110_0100)");
+  drive_friend_byte(8'hE4);
+
+  $display("    Exercising byte 0x3B (0011_1011)");
+  drive_friend_byte(8'h3B);
+
+  $display("    ✓ Friend's backpressure sequence verified");
+
+  end_test();
     
     //=========================================================================
     // Summary

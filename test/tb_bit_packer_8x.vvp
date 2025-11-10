@@ -1,0 +1,1128 @@
+#! /opt/homebrew/Cellar/icarus-verilog/12.0/bin/vvp
+:ivl_version "12.0 (stable)";
+:ivl_delay_selection "TYPICAL";
+:vpi_time_precision - 12;
+:vpi_module "/opt/homebrew/Cellar/icarus-verilog/12.0/lib/ivl/system.vpi";
+:vpi_module "/opt/homebrew/Cellar/icarus-verilog/12.0/lib/ivl/vhdl_sys.vpi";
+:vpi_module "/opt/homebrew/Cellar/icarus-verilog/12.0/lib/ivl/vhdl_textio.vpi";
+:vpi_module "/opt/homebrew/Cellar/icarus-verilog/12.0/lib/ivl/v2005_math.vpi";
+:vpi_module "/opt/homebrew/Cellar/icarus-verilog/12.0/lib/ivl/va_math.vpi";
+:vpi_module "/opt/homebrew/Cellar/icarus-verilog/12.0/lib/ivl/v2009.vpi";
+S_0x10335e020 .scope package, "$unit" "$unit" 2 1;
+ .timescale 0 0;
+S_0x10335e1a0 .scope module, "tb_bit_packer_8x" "tb_bit_packer_8x" 3 3;
+ .timescale -9 -12;
+v0x98b09c0a0_0 .var/i "bit_idx", 31 0;
+v0x98b09c140_0 .var/i "bits_sent", 31 0;
+v0x98b09c1e0_0 .var "bp_byte", 7 0;
+v0x98b09c280 .array "burst_bytes", 3 0, 7 0;
+v0x98b09c320_0 .var/i "byte_idx", 31 0;
+v0x98b09c3c0_0 .var/i "bytes_received", 31 0;
+v0x98b09c460_0 .var "clean_byte", 7 0;
+v0x98b09c500_0 .var "clk", 0 0;
+v0x98b09c5a0_0 .var/i "collected", 31 0;
+v0x98b09c640_0 .var "dec_bit", 0 0;
+v0x98b09c6e0_0 .var "dec_bit_valid", 0 0;
+v0x98b09c780_0 .var/i "expected_bits", 31 0;
+v0x98b09c820_0 .var/i "fail_count", 31 0;
+v0x98b09c8c0_0 .var "gap_byte", 7 0;
+v0x98b09c960_0 .var/i "i", 31 0;
+v0x98b09ca00_0 .net "out_byte", 7 0, v0x103358fc0_0;  1 drivers
+v0x98b09caa0_0 .var "out_ready", 0 0;
+v0x98b09cb40_0 .net "out_valid", 0 0, v0x103357b80_0;  1 drivers
+v0x98b09cbe0_0 .var/i "p", 31 0;
+v0x98b09cc80_0 .var/i "pass_count", 31 0;
+v0x98b09cd20 .array "patterns", 4 0, 7 0;
+v0x98b09cdc0 .array "reference_bytes", 124 0, 7 0;
+v0x98b09ce60_0 .var "rst", 0 0;
+v0x98b09cf00_0 .var "saved_byte", 7 0;
+v0x98b09cfa0_0 .var "test_byte", 7 0;
+v0x98b09d040_0 .var/i "test_num", 31 0;
+v0x98b09d0e0_0 .var "test_pass", 0 0;
+S_0x10335d5a0 .scope task, "apply_reset" "apply_reset" 3 47, 3 47 0, S_0x10335e1a0;
+ .timescale -9 -12;
+E_0x98b0722c0 .event posedge, v0x103359330_0;
+TD_tb_bit_packer_8x.apply_reset ;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09ce60_0, 0, 1;
+    %wait E_0x98b0722c0;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09ce60_0, 0, 1;
+    %wait E_0x98b0722c0;
+    %end;
+S_0x10335f120 .scope module, "dut" "bit_packer_8x" 3 35, 4 1 0, S_0x10335e1a0;
+ .timescale -9 -12;
+    .port_info 0 /INPUT 1 "clk";
+    .port_info 1 /INPUT 1 "rst";
+    .port_info 2 /INPUT 1 "dec_bit_valid";
+    .port_info 3 /INPUT 1 "dec_bit";
+    .port_info 4 /OUTPUT 1 "out_valid";
+    .port_info 5 /INPUT 1 "out_ready";
+    .port_info 6 /OUTPUT 8 "out_byte";
+v0x103359870_0 .var "bit_count", 2 0;
+v0x103359330_0 .net "clk", 0 0, v0x98b09c500_0;  1 drivers
+v0x103358d20_0 .net "dec_bit", 0 0, v0x98b09c640_0;  1 drivers
+v0x103358e70_0 .net "dec_bit_valid", 0 0, v0x98b09c6e0_0;  1 drivers
+v0x103358fc0_0 .var "out_byte", 7 0;
+v0x103358870_0 .net "out_ready", 0 0, v0x98b09caa0_0;  1 drivers
+v0x103357b80_0 .var "out_valid", 0 0;
+v0x10335b720_0 .net "rst", 0 0, v0x98b09ce60_0;  1 drivers
+v0x10335c920_0 .var "shift_reg", 7 0;
+S_0x10335f2a0 .scope task, "end_test" "end_test" 3 101, 3 101 0, S_0x10335e1a0;
+ .timescale -9 -12;
+TD_tb_bit_packer_8x.end_test ;
+    %load/vec4 v0x98b09d0e0_0;
+    %flag_set/vec4 8;
+    %jmp/0xz  T_1.0, 8;
+    %vpi_call/w 3 104 "$display", "\342\234\223 Test %0d PASS", v0x98b09d040_0 {0 0 0};
+    %load/vec4 v0x98b09cc80_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09cc80_0, 0, 32;
+    %jmp T_1.1;
+T_1.0 ;
+    %vpi_call/w 3 107 "$display", "\342\234\227 Test %0d FAIL", v0x98b09d040_0 {0 0 0};
+    %load/vec4 v0x98b09c820_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09c820_0, 0, 32;
+T_1.1 ;
+    %end;
+S_0x10334a790 .scope task, "push_byte_lsb_first" "push_byte_lsb_first" 3 60, 3 60 0, S_0x10335e1a0;
+ .timescale -9 -12;
+v0x10334a910_0 .var "byte_val", 7 0;
+v0x10334a9b0_0 .var/i "idx", 31 0;
+TD_tb_bit_packer_8x.push_byte_lsb_first ;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x10334a9b0_0, 0, 32;
+T_2.2 ;
+    %load/vec4 v0x10334a9b0_0;
+    %cmpi/s 8, 0, 32;
+    %jmp/0xz T_2.3, 5;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %load/vec4 v0x10334a910_0;
+    %load/vec4 v0x10334a9b0_0;
+    %part/s 1;
+    %store/vec4 v0x98b09c640_0, 0, 1;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09c6e0_0, 0, 1;
+    %load/vec4 v0x10334a9b0_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x10334a9b0_0, 0, 32;
+    %jmp T_2.2;
+T_2.3 ;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09c6e0_0, 0, 1;
+    %end;
+S_0x103355520 .scope task, "start_test" "start_test" 3 91, 3 91 0, S_0x10335e1a0;
+ .timescale -9 -12;
+v0x1033556a0_0 .var "description", 255 0;
+TD_tb_bit_packer_8x.start_test ;
+    %load/vec4 v0x98b09d040_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09d040_0, 0, 32;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+    %vpi_call/w 3 96 "$display", "\000" {0 0 0};
+    %vpi_call/w 3 97 "$display", "--- Test %0d: %s ---", v0x98b09d040_0, v0x1033556a0_0 {0 0 0};
+    %end;
+S_0x10335f9a0 .scope task, "wait_for_valid" "wait_for_valid" 3 76, 3 76 0, S_0x10335e1a0;
+ .timescale -9 -12;
+v0x98b09c000_0 .var/i "timeout_count", 31 0;
+TD_tb_bit_packer_8x.wait_for_valid ;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09c000_0, 0, 32;
+T_4.4 ;
+    %load/vec4 v0x98b09cb40_0;
+    %nor/r;
+    %flag_set/vec4 9;
+    %flag_get/vec4 9;
+    %jmp/0 T_4.6, 9;
+    %load/vec4 v0x98b09c000_0;
+    %cmpi/s 100, 0, 32;
+    %flag_get/vec4 5;
+    %and;
+T_4.6;
+    %flag_set/vec4 8;
+    %jmp/0xz T_4.5, 8;
+    %wait E_0x98b0722c0;
+    %load/vec4 v0x98b09c000_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09c000_0, 0, 32;
+    %jmp T_4.4;
+T_4.5 ;
+    %load/vec4 v0x98b09c000_0;
+    %cmpi/s 100, 0, 32;
+    %flag_inv 5; GE is !LT
+    %jmp/0xz  T_4.7, 5;
+    %vpi_call/w 3 85 "$display", "  \342\234\227 Timeout waiting for out_valid" {0 0 0};
+    %vpi_call/w 3 86 "$fatal", 32'sb00000000000000000000000000000001 {0 0 0};
+T_4.7 ;
+    %end;
+    .scope S_0x10335f120;
+T_5 ;
+    %wait E_0x98b0722c0;
+    %load/vec4 v0x10335b720_0;
+    %flag_set/vec4 8;
+    %jmp/0xz  T_5.0, 8;
+    %pushi/vec4 0, 0, 8;
+    %assign/vec4 v0x10335c920_0, 0;
+    %pushi/vec4 0, 0, 3;
+    %assign/vec4 v0x103359870_0, 0;
+    %pushi/vec4 0, 0, 1;
+    %assign/vec4 v0x103357b80_0, 0;
+    %pushi/vec4 0, 0, 8;
+    %assign/vec4 v0x103358fc0_0, 0;
+    %jmp T_5.1;
+T_5.0 ;
+    %load/vec4 v0x103357b80_0;
+    %flag_set/vec4 9;
+    %flag_get/vec4 9;
+    %jmp/0 T_5.4, 9;
+    %load/vec4 v0x103358870_0;
+    %and;
+T_5.4;
+    %flag_set/vec4 8;
+    %jmp/0xz  T_5.2, 8;
+    %pushi/vec4 0, 0, 1;
+    %assign/vec4 v0x103357b80_0, 0;
+T_5.2 ;
+    %load/vec4 v0x103358e70_0;
+    %flag_set/vec4 9;
+    %flag_get/vec4 9;
+    %jmp/0 T_5.7, 9;
+    %load/vec4 v0x103357b80_0;
+    %nor/r;
+    %and;
+T_5.7;
+    %flag_set/vec4 8;
+    %jmp/0xz  T_5.5, 8;
+    %load/vec4 v0x103358d20_0;
+    %load/vec4 v0x10335c920_0;
+    %parti/s 7, 1, 2;
+    %concat/vec4; draw_concat_vec4
+    %assign/vec4 v0x10335c920_0, 0;
+    %load/vec4 v0x103359870_0;
+    %addi 1, 0, 3;
+    %assign/vec4 v0x103359870_0, 0;
+    %load/vec4 v0x103359870_0;
+    %cmpi/e 7, 0, 3;
+    %jmp/0xz  T_5.8, 4;
+    %load/vec4 v0x103358d20_0;
+    %load/vec4 v0x10335c920_0;
+    %parti/s 7, 1, 2;
+    %concat/vec4; draw_concat_vec4
+    %assign/vec4 v0x103358fc0_0, 0;
+    %pushi/vec4 1, 0, 1;
+    %assign/vec4 v0x103357b80_0, 0;
+    %pushi/vec4 0, 0, 3;
+    %assign/vec4 v0x103359870_0, 0;
+T_5.8 ;
+T_5.5 ;
+T_5.1 ;
+    %jmp T_5;
+    .thread T_5;
+    .scope S_0x10335e1a0;
+T_6 ;
+    %delay 5000, 0;
+    %load/vec4 v0x98b09c500_0;
+    %inv;
+    %store/vec4 v0x98b09c500_0, 0, 1;
+    %jmp T_6;
+    .thread T_6;
+    .scope S_0x10335e1a0;
+T_7 ;
+    %delay 1000000000, 0;
+    %vpi_call/w 3 116 "$display", "\012*** TIMEOUT - test did not complete ***" {0 0 0};
+    %vpi_call/w 3 117 "$finish" {0 0 0};
+    %end;
+    .thread T_7;
+    .scope S_0x10335e1a0;
+T_8 ;
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09c500_0, 0, 1;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09ce60_0, 0, 1;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09d040_0, 0, 32;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09cc80_0, 0, 32;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09c820_0, 0, 32;
+    %vpi_call/w 3 127 "$display", "\000" {0 0 0};
+    %vpi_call/w 3 128 "$display", "=======================================================" {0 0 0};
+    %vpi_call/w 3 129 "$display", "Bit Packer 8x Testbench" {0 0 0};
+    %vpi_call/w 3 130 "$display", "=======================================================" {0 0 0};
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09caa0_0, 0, 1;
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09c6e0_0, 0, 1;
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09c640_0, 0, 1;
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 17263, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1818501234, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1702061428, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %store/vec4 v0x1033556a0_0, 0, 256;
+    %fork TD_tb_bit_packer_8x.start_test, S_0x103355520;
+    %join;
+    %fork TD_tb_bit_packer_8x.apply_reset, S_0x10335d5a0;
+    %join;
+    %delay 1000, 0;
+    %load/vec4 v0x98b09cb40_0;
+    %pad/u 32;
+    %cmpi/ne 0, 0, 32;
+    %jmp/0xz  T_8.0, 6;
+    %vpi_call/w 3 145 "$display", "  \342\234\227 out_valid should be 0 after reset, got %b", v0x98b09cb40_0 {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+    %jmp T_8.1;
+T_8.0 ;
+    %vpi_call/w 3 148 "$display", "  \342\234\223 out_valid = 0 after reset" {0 0 0};
+T_8.1 ;
+    %load/vec4 v0x103359870_0;
+    %pad/u 32;
+    %cmpi/ne 0, 0, 32;
+    %jmp/0xz  T_8.2, 6;
+    %vpi_call/w 3 152 "$display", "  \342\234\227 bit_count should be 0 after reset, got %0d", v0x103359870_0 {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+    %jmp T_8.3;
+T_8.2 ;
+    %vpi_call/w 3 155 "$display", "  \342\234\223 bit_count = 0 after reset" {0 0 0};
+T_8.3 ;
+    %fork TD_tb_bit_packer_8x.end_test, S_0x10335f2a0;
+    %join;
+    %pushi/vec4 3896537178, 0, 33;
+    %concati/vec4 3302156352, 0, 32;
+    %concati/vec4 3770861270, 0, 32;
+    %concati/vec4 3404218448, 0, 32;
+    %concati/vec4 3705553092, 0, 32;
+    %concati/vec4 3267811040, 0, 32;
+    %concati/vec4 3838502630, 0, 32;
+    %concati/vec4 1970431273, 0, 31;
+    %store/vec4 v0x1033556a0_0, 0, 256;
+    %fork TD_tb_bit_packer_8x.start_test, S_0x103355520;
+    %join;
+    %fork TD_tb_bit_packer_8x.apply_reset, S_0x10335d5a0;
+    %join;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09caa0_0, 0, 1;
+    %pushi/vec4 173, 0, 8;
+    %store/vec4 v0x98b09cfa0_0, 0, 8;
+    %load/vec4 v0x98b09cfa0_0;
+    %store/vec4 v0x10334a910_0, 0, 8;
+    %fork TD_tb_bit_packer_8x.push_byte_lsb_first, S_0x10334a790;
+    %join;
+    %fork TD_tb_bit_packer_8x.wait_for_valid, S_0x10335f9a0;
+    %join;
+    %delay 1000, 0;
+    %load/vec4 v0x98b09ca00_0;
+    %load/vec4 v0x98b09cfa0_0;
+    %cmp/ne;
+    %jmp/0xz  T_8.4, 6;
+    %vpi_call/w 3 175 "$display", "  \342\234\227 Byte mismatch: got %b, expected %b", v0x98b09ca00_0, v0x98b09cfa0_0 {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+    %jmp T_8.5;
+T_8.4 ;
+    %vpi_call/w 3 178 "$display", "  \342\234\223 Correct byte output: %b", v0x98b09ca00_0 {0 0 0};
+T_8.5 ;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %load/vec4 v0x98b09cb40_0;
+    %pad/u 32;
+    %cmpi/ne 0, 0, 32;
+    %jmp/0xz  T_8.6, 6;
+    %vpi_call/w 3 184 "$display", "  \342\234\227 out_valid should drop after handshake, got %b", v0x98b09cb40_0 {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+    %jmp T_8.7;
+T_8.6 ;
+    %vpi_call/w 3 187 "$display", "  \342\234\223 out_valid dropped after handshake" {0 0 0};
+T_8.7 ;
+    %fork TD_tb_bit_packer_8x.end_test, S_0x10335f2a0;
+    %join;
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 17001, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1949134706, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1684369952, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1668247142, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1769106785, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1953066862, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %store/vec4 v0x1033556a0_0, 0, 256;
+    %fork TD_tb_bit_packer_8x.start_test, S_0x103355520;
+    %join;
+    %pushi/vec4 0, 0, 8;
+    %ix/load 4, 0, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cd20, 4, 0;
+    %pushi/vec4 255, 0, 8;
+    %ix/load 4, 1, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cd20, 4, 0;
+    %pushi/vec4 1, 0, 8;
+    %ix/load 4, 2, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cd20, 4, 0;
+    %pushi/vec4 128, 0, 8;
+    %ix/load 4, 3, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cd20, 4, 0;
+    %pushi/vec4 150, 0, 8;
+    %ix/load 4, 4, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cd20, 4, 0;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09cbe0_0, 0, 32;
+T_8.8 ;
+    %load/vec4 v0x98b09cbe0_0;
+    %cmpi/s 5, 0, 32;
+    %jmp/0xz T_8.9, 5;
+    %fork TD_tb_bit_packer_8x.apply_reset, S_0x10335d5a0;
+    %join;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09caa0_0, 0, 1;
+    %vpi_call/w 3 207 "$display", "  Testing pattern: 8'h%02h", &A<v0x98b09cd20, v0x98b09cbe0_0 > {0 0 0};
+    %ix/getv/s 4, v0x98b09cbe0_0;
+    %load/vec4a v0x98b09cd20, 4;
+    %store/vec4 v0x10334a910_0, 0, 8;
+    %fork TD_tb_bit_packer_8x.push_byte_lsb_first, S_0x10334a790;
+    %join;
+    %fork TD_tb_bit_packer_8x.wait_for_valid, S_0x10335f9a0;
+    %join;
+    %delay 1000, 0;
+    %load/vec4 v0x98b09ca00_0;
+    %ix/getv/s 4, v0x98b09cbe0_0;
+    %load/vec4a v0x98b09cd20, 4;
+    %cmp/ne;
+    %jmp/0xz  T_8.10, 6;
+    %vpi_call/w 3 213 "$display", "    \342\234\227 Mismatch: got %b, expected %b", v0x98b09ca00_0, &A<v0x98b09cd20, v0x98b09cbe0_0 > {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+    %jmp T_8.11;
+T_8.10 ;
+    %vpi_call/w 3 216 "$display", "    \342\234\223 Match: %b", v0x98b09ca00_0 {0 0 0};
+T_8.11 ;
+    %wait E_0x98b0722c0;
+    %wait E_0x98b0722c0;
+    %load/vec4 v0x98b09cbe0_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09cbe0_0, 0, 32;
+    %jmp T_8.8;
+T_8.9 ;
+    %fork TD_tb_bit_packer_8x.end_test, S_0x10335f2a0;
+    %join;
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 16993, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1667985522, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1702065013, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1919230063, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1847619445, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1953527156, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %store/vec4 v0x1033556a0_0, 0, 256;
+    %fork TD_tb_bit_packer_8x.start_test, S_0x103355520;
+    %join;
+    %fork TD_tb_bit_packer_8x.apply_reset, S_0x10335d5a0;
+    %join;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09caa0_0, 0, 1;
+    %pushi/vec4 165, 0, 8;
+    %store/vec4 v0x98b09c1e0_0, 0, 8;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09c960_0, 0, 32;
+T_8.12 ;
+    %load/vec4 v0x98b09c960_0;
+    %cmpi/s 7, 0, 32;
+    %jmp/0xz T_8.13, 5;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %load/vec4 v0x98b09c1e0_0;
+    %load/vec4 v0x98b09c960_0;
+    %part/s 1;
+    %store/vec4 v0x98b09c640_0, 0, 1;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09c6e0_0, 0, 1;
+    %load/vec4 v0x98b09c960_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09c960_0, 0, 32;
+    %jmp T_8.12;
+T_8.13 ;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09caa0_0, 0, 1;
+    %load/vec4 v0x98b09c1e0_0;
+    %parti/s 1, 7, 4;
+    %store/vec4 v0x98b09c640_0, 0, 1;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09c6e0_0, 0, 1;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09c6e0_0, 0, 1;
+    %load/vec4 v0x98b09cb40_0;
+    %nor/r;
+    %flag_set/vec4 8;
+    %jmp/0xz  T_8.14, 8;
+    %vpi_call/w 3 257 "$display", "  \342\234\227 out_valid not asserted after 8 bits" {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+T_8.14 ;
+    %load/vec4 v0x98b09ca00_0;
+    %load/vec4 v0x98b09c1e0_0;
+    %cmp/ne;
+    %jmp/0xz  T_8.16, 6;
+    %vpi_call/w 3 262 "$display", "  \342\234\227 Initial byte mismatch" {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+T_8.16 ;
+    %load/vec4 v0x98b09ca00_0;
+    %store/vec4 v0x98b09cf00_0, 0, 8;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09c960_0, 0, 32;
+T_8.18 ;
+    %load/vec4 v0x98b09c960_0;
+    %cmpi/s 5, 0, 32;
+    %jmp/0xz T_8.19, 5;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %load/vec4 v0x98b09cb40_0;
+    %nor/r;
+    %flag_set/vec4 8;
+    %jmp/0xz  T_8.20, 8;
+    %vpi_call/w 3 273 "$display", "  \342\234\227 out_valid dropped during backpressure at cycle %0d", v0x98b09c960_0 {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+T_8.20 ;
+    %load/vec4 v0x98b09ca00_0;
+    %load/vec4 v0x98b09cf00_0;
+    %cmp/ne;
+    %jmp/0xz  T_8.22, 6;
+    %vpi_call/w 3 277 "$display", "  \342\234\227 out_byte changed during backpressure" {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+T_8.22 ;
+    %load/vec4 v0x98b09c960_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09c960_0, 0, 32;
+    %jmp T_8.18;
+T_8.19 ;
+    %load/vec4 v0x98b09d0e0_0;
+    %flag_set/vec4 8;
+    %jmp/0xz  T_8.24, 8;
+    %vpi_call/w 3 283 "$display", "  \342\234\223 Byte held stable during backpressure" {0 0 0};
+T_8.24 ;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09caa0_0, 0, 1;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %load/vec4 v0x98b09cb40_0;
+    %pad/u 32;
+    %cmpi/ne 0, 0, 32;
+    %jmp/0xz  T_8.26, 6;
+    %vpi_call/w 3 291 "$display", "  \342\234\227 out_valid should drop after backpressure release" {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+    %jmp T_8.27;
+T_8.26 ;
+    %vpi_call/w 3 294 "$display", "  \342\234\223 out_valid dropped after backpressure release" {0 0 0};
+T_8.27 ;
+    %fork TD_tb_bit_packer_8x.end_test, S_0x10335f2a0;
+    %join;
+    %pushi/vec4 1197568115, 0, 32; draw_string_vec4
+    %pushi/vec4 544173600, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1768845429, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1948264566, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1634494820, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 543450465, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1936942450, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1952801833, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %store/vec4 v0x1033556a0_0, 0, 256;
+    %fork TD_tb_bit_packer_8x.start_test, S_0x103355520;
+    %join;
+    %fork TD_tb_bit_packer_8x.apply_reset, S_0x10335d5a0;
+    %join;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09caa0_0, 0, 1;
+    %pushi/vec4 195, 0, 8;
+    %store/vec4 v0x98b09c8c0_0, 0, 8;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09c960_0, 0, 32;
+T_8.28 ;
+    %load/vec4 v0x98b09c960_0;
+    %cmpi/s 3, 0, 32;
+    %jmp/0xz T_8.29, 5;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %load/vec4 v0x98b09c8c0_0;
+    %load/vec4 v0x98b09c960_0;
+    %part/s 1;
+    %store/vec4 v0x98b09c640_0, 0, 1;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09c6e0_0, 0, 1;
+    %load/vec4 v0x98b09c960_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09c960_0, 0, 32;
+    %jmp T_8.28;
+T_8.29 ;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09c6e0_0, 0, 1;
+    %pushi/vec4 3, 0, 32;
+T_8.30 %dup/vec4;
+    %pushi/vec4 0, 0, 32;
+    %cmp/s;
+    %jmp/1xz T_8.31, 5;
+    %jmp/1 T_8.31, 4;
+    %pushi/vec4 1, 0, 32;
+    %sub;
+    %wait E_0x98b0722c0;
+    %jmp T_8.30;
+T_8.31 ;
+    %pop/vec4 1;
+    %pushi/vec4 3, 0, 32;
+    %store/vec4 v0x98b09c960_0, 0, 32;
+T_8.32 ;
+    %load/vec4 v0x98b09c960_0;
+    %cmpi/s 8, 0, 32;
+    %jmp/0xz T_8.33, 5;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %load/vec4 v0x98b09c8c0_0;
+    %load/vec4 v0x98b09c960_0;
+    %part/s 1;
+    %store/vec4 v0x98b09c640_0, 0, 1;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09c6e0_0, 0, 1;
+    %load/vec4 v0x98b09c960_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09c960_0, 0, 32;
+    %jmp T_8.32;
+T_8.33 ;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09c6e0_0, 0, 1;
+    %fork TD_tb_bit_packer_8x.wait_for_valid, S_0x10335f9a0;
+    %join;
+    %delay 1000, 0;
+    %load/vec4 v0x98b09ca00_0;
+    %load/vec4 v0x98b09c8c0_0;
+    %cmp/ne;
+    %jmp/0xz  T_8.34, 6;
+    %vpi_call/w 3 339 "$display", "  \342\234\227 Byte mismatch with gaps: got %b, expected %b", v0x98b09ca00_0, v0x98b09c8c0_0 {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+    %jmp T_8.35;
+T_8.34 ;
+    %vpi_call/w 3 342 "$display", "  \342\234\223 Correct byte with input gaps" {0 0 0};
+T_8.35 ;
+    %fork TD_tb_bit_packer_8x.end_test, S_0x10335f2a0;
+    %join;
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 17013, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1920168992, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1937011301, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1634541608, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 874537593, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1952805673, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %store/vec4 v0x1033556a0_0, 0, 256;
+    %fork TD_tb_bit_packer_8x.start_test, S_0x103355520;
+    %join;
+    %fork TD_tb_bit_packer_8x.apply_reset, S_0x10335d5a0;
+    %join;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09caa0_0, 0, 1;
+    %pushi/vec4 18, 0, 8;
+    %ix/load 4, 0, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09c280, 4, 0;
+    %pushi/vec4 52, 0, 8;
+    %ix/load 4, 1, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09c280, 4, 0;
+    %pushi/vec4 86, 0, 8;
+    %ix/load 4, 2, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09c280, 4, 0;
+    %pushi/vec4 120, 0, 8;
+    %ix/load 4, 3, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09c280, 4, 0;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09c320_0, 0, 32;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09c0a0_0, 0, 32;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09c5a0_0, 0, 32;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09c960_0, 0, 32;
+T_8.36 ;
+    %load/vec4 v0x98b09c960_0;
+    %cmpi/s 100, 0, 32;
+    %flag_get/vec4 5;
+    %jmp/0 T_8.38, 5;
+    %load/vec4 v0x98b09c5a0_0;
+    %cmpi/s 4, 0, 32;
+    %flag_get/vec4 5;
+    %and;
+T_8.38;
+    %flag_set/vec4 8;
+    %jmp/0xz T_8.37, 8;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %load/vec4 v0x98b09c320_0;
+    %cmpi/s 4, 0, 32;
+    %flag_get/vec4 5;
+    %jmp/0 T_8.42, 5;
+    %load/vec4 v0x98b09c0a0_0;
+    %cmpi/s 8, 0, 32;
+    %flag_get/vec4 5;
+    %and;
+T_8.42;
+    %flag_set/vec4 9;
+    %flag_get/vec4 9;
+    %jmp/0 T_8.41, 9;
+    %load/vec4 v0x98b09cb40_0;
+    %nor/r;
+    %and;
+T_8.41;
+    %flag_set/vec4 8;
+    %jmp/0xz  T_8.39, 8;
+    %ix/getv/s 4, v0x98b09c320_0;
+    %load/vec4a v0x98b09c280, 4;
+    %load/vec4 v0x98b09c0a0_0;
+    %part/s 1;
+    %store/vec4 v0x98b09c640_0, 0, 1;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09c6e0_0, 0, 1;
+    %load/vec4 v0x98b09c0a0_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09c0a0_0, 0, 32;
+    %load/vec4 v0x98b09c0a0_0;
+    %cmpi/e 8, 0, 32;
+    %jmp/0xz  T_8.43, 4;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09c0a0_0, 0, 32;
+    %load/vec4 v0x98b09c320_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09c320_0, 0, 32;
+T_8.43 ;
+    %jmp T_8.40;
+T_8.39 ;
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09c6e0_0, 0, 1;
+T_8.40 ;
+    %load/vec4 v0x98b09cb40_0;
+    %flag_set/vec4 9;
+    %flag_get/vec4 9;
+    %jmp/0 T_8.47, 9;
+    %load/vec4 v0x98b09caa0_0;
+    %and;
+T_8.47;
+    %flag_set/vec4 8;
+    %jmp/0xz  T_8.45, 8;
+    %load/vec4 v0x98b09ca00_0;
+    %ix/getv/s 4, v0x98b09c5a0_0;
+    %load/vec4a v0x98b09c280, 4;
+    %cmp/ne;
+    %jmp/0xz  T_8.48, 6;
+    %vpi_call/w 3 385 "$display", "  \342\234\227 Byte %0d mismatch: got 8'h%02h, expected 8'h%02h", v0x98b09c5a0_0, v0x98b09ca00_0, &A<v0x98b09c280, v0x98b09c5a0_0 > {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+    %jmp T_8.49;
+T_8.48 ;
+    %vpi_call/w 3 389 "$display", "  \342\234\223 Byte %0d correct: 8'h%02h", v0x98b09c5a0_0, v0x98b09ca00_0 {0 0 0};
+T_8.49 ;
+    %load/vec4 v0x98b09c5a0_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09c5a0_0, 0, 32;
+T_8.45 ;
+    %load/vec4 v0x98b09c960_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09c960_0, 0, 32;
+    %jmp T_8.36;
+T_8.37 ;
+    %load/vec4 v0x98b09c5a0_0;
+    %cmpi/ne 4, 0, 32;
+    %jmp/0xz  T_8.50, 6;
+    %vpi_call/w 3 396 "$display", "  \342\234\227 Expected 4 bytes, got %0d", v0x98b09c5a0_0 {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+T_8.50 ;
+    %fork TD_tb_bit_packer_8x.end_test, S_0x10335f2a0;
+    %join;
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 20577, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1920231777, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1814062697, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1851878432, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1652126821, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %store/vec4 v0x1033556a0_0, 0, 256;
+    %fork TD_tb_bit_packer_8x.start_test, S_0x103355520;
+    %join;
+    %fork TD_tb_bit_packer_8x.apply_reset, S_0x10335d5a0;
+    %join;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09caa0_0, 0, 1;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09c960_0, 0, 32;
+T_8.52 ;
+    %load/vec4 v0x98b09c960_0;
+    %cmpi/s 5, 0, 32;
+    %jmp/0xz T_8.53, 5;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %load/vec4 v0x98b09c960_0;
+    %parti/s 1, 0, 2;
+    %store/vec4 v0x98b09c640_0, 0, 1;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09c6e0_0, 0, 1;
+    %load/vec4 v0x98b09c960_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09c960_0, 0, 32;
+    %jmp T_8.52;
+T_8.53 ;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09c6e0_0, 0, 1;
+    %pushi/vec4 10, 0, 32;
+T_8.54 %dup/vec4;
+    %pushi/vec4 0, 0, 32;
+    %cmp/s;
+    %jmp/1xz T_8.55, 5;
+    %jmp/1 T_8.55, 4;
+    %pushi/vec4 1, 0, 32;
+    %sub;
+    %wait E_0x98b0722c0;
+    %jmp T_8.54;
+T_8.55 ;
+    %pop/vec4 1;
+    %delay 1000, 0;
+    %load/vec4 v0x98b09cb40_0;
+    %flag_set/vec4 8;
+    %jmp/0xz  T_8.56, 8;
+    %vpi_call/w 3 428 "$display", "  \342\234\227 out_valid should not assert for partial byte" {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+    %jmp T_8.57;
+T_8.56 ;
+    %vpi_call/w 3 431 "$display", "  \342\234\223 No out_valid for partial byte (hold behavior)" {0 0 0};
+T_8.57 ;
+    %load/vec4 v0x103359870_0;
+    %pad/u 32;
+    %cmpi/ne 5, 0, 32;
+    %jmp/0xz  T_8.58, 6;
+    %vpi_call/w 3 435 "$display", "  \342\234\227 bit_count should be 5, got %0d", v0x103359870_0 {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+    %jmp T_8.59;
+T_8.58 ;
+    %vpi_call/w 3 438 "$display", "  \342\234\223 bit_count = 5 for partial byte" {0 0 0};
+T_8.59 ;
+    %fork TD_tb_bit_packer_8x.end_test, S_0x10335f2a0;
+    %join;
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 19817, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1680695929, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1952784498, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1702061428, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %store/vec4 v0x1033556a0_0, 0, 256;
+    %fork TD_tb_bit_packer_8x.start_test, S_0x103355520;
+    %join;
+    %fork TD_tb_bit_packer_8x.apply_reset, S_0x10335d5a0;
+    %join;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09caa0_0, 0, 1;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09c960_0, 0, 32;
+T_8.60 ;
+    %load/vec4 v0x98b09c960_0;
+    %cmpi/s 5, 0, 32;
+    %jmp/0xz T_8.61, 5;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09c640_0, 0, 1;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09c6e0_0, 0, 1;
+    %load/vec4 v0x98b09c960_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09c960_0, 0, 32;
+    %jmp T_8.60;
+T_8.61 ;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09c6e0_0, 0, 1;
+    %fork TD_tb_bit_packer_8x.apply_reset, S_0x10335d5a0;
+    %join;
+    %wait E_0x98b0722c0;
+    %delay 1000, 0;
+    %vpi_call/w 3 469 "$display", "  DEBUG: bit_count after reset = %0d", v0x103359870_0 {0 0 0};
+    %load/vec4 v0x103359870_0;
+    %pad/u 32;
+    %cmpi/ne 0, 0, 32;
+    %jmp/0xz  T_8.62, 6;
+    %vpi_call/w 3 473 "$display", "  \342\234\227 bit_count not cleared after mid-byte reset" {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+    %jmp T_8.63;
+T_8.62 ;
+    %vpi_call/w 3 476 "$display", "  \342\234\223 bit_count cleared after reset" {0 0 0};
+T_8.63 ;
+    %pushi/vec4 60, 0, 8;
+    %store/vec4 v0x98b09c460_0, 0, 8;
+    %load/vec4 v0x98b09c460_0;
+    %store/vec4 v0x10334a910_0, 0, 8;
+    %fork TD_tb_bit_packer_8x.push_byte_lsb_first, S_0x10334a790;
+    %join;
+    %fork TD_tb_bit_packer_8x.wait_for_valid, S_0x10335f9a0;
+    %join;
+    %delay 1000, 0;
+    %load/vec4 v0x98b09ca00_0;
+    %load/vec4 v0x98b09c460_0;
+    %cmp/ne;
+    %jmp/0xz  T_8.64, 6;
+    %vpi_call/w 3 486 "$display", "  \342\234\227 First byte after reset corrupted" {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+    %jmp T_8.65;
+T_8.64 ;
+    %vpi_call/w 3 489 "$display", "  \342\234\223 Clean byte after mid-byte reset" {0 0 0};
+T_8.65 ;
+    %fork TD_tb_bit_packer_8x.end_test, S_0x10335f2a0;
+    %join;
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %pushi/vec4 0, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 21364, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1919251315, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 544499059, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1948264497, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 808460386, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %pushi/vec4 1769239337, 0, 32; draw_string_vec4
+    %concat/vec4; draw_string_vec4
+    %store/vec4 v0x1033556a0_0, 0, 256;
+    %fork TD_tb_bit_packer_8x.start_test, S_0x103355520;
+    %join;
+    %fork TD_tb_bit_packer_8x.apply_reset, S_0x10335d5a0;
+    %join;
+    %pushi/vec4 1, 0, 1;
+    %store/vec4 v0x98b09caa0_0, 0, 1;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09c140_0, 0, 32;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09c3c0_0, 0, 32;
+    %pushi/vec4 163, 0, 8;
+    %ix/load 4, 0, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cdc0, 4, 0;
+    %pushi/vec4 92, 0, 8;
+    %ix/load 4, 1, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cdc0, 4, 0;
+    %pushi/vec4 113, 0, 8;
+    %ix/load 4, 2, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cdc0, 4, 0;
+    %pushi/vec4 142, 0, 8;
+    %ix/load 4, 3, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cdc0, 4, 0;
+    %pushi/vec4 66, 0, 8;
+    %ix/load 4, 4, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cdc0, 4, 0;
+    %pushi/vec4 217, 0, 8;
+    %ix/load 4, 5, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cdc0, 4, 0;
+    %pushi/vec4 111, 0, 8;
+    %ix/load 4, 6, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cdc0, 4, 0;
+    %pushi/vec4 177, 0, 8;
+    %ix/load 4, 7, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cdc0, 4, 0;
+    %pushi/vec4 42, 0, 8;
+    %ix/load 4, 8, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cdc0, 4, 0;
+    %pushi/vec4 148, 0, 8;
+    %ix/load 4, 9, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cdc0, 4, 0;
+    %pushi/vec4 197, 0, 8;
+    %ix/load 4, 10, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cdc0, 4, 0;
+    %pushi/vec4 62, 0, 8;
+    %ix/load 4, 11, 0;
+    %flag_set/imm 4, 0;
+    %store/vec4a v0x98b09cdc0, 4, 0;
+    %pushi/vec4 0, 0, 32;
+    %store/vec4 v0x98b09c960_0, 0, 32;
+T_8.66 ;
+    %load/vec4 v0x98b09c960_0;
+    %cmpi/s 12, 0, 32;
+    %jmp/0xz T_8.67, 5;
+    %ix/getv/s 4, v0x98b09c960_0;
+    %load/vec4a v0x98b09cdc0, 4;
+    %store/vec4 v0x10334a910_0, 0, 8;
+    %fork TD_tb_bit_packer_8x.push_byte_lsb_first, S_0x10334a790;
+    %join;
+    %load/vec4 v0x98b09c140_0;
+    %addi 8, 0, 32;
+    %store/vec4 v0x98b09c140_0, 0, 32;
+    %fork TD_tb_bit_packer_8x.wait_for_valid, S_0x10335f9a0;
+    %join;
+    %load/vec4 v0x98b09ca00_0;
+    %ix/getv/s 4, v0x98b09c3c0_0;
+    %load/vec4a v0x98b09cdc0, 4;
+    %cmp/ne;
+    %jmp/0xz  T_8.68, 6;
+    %vpi_call/w 3 527 "$display", "  \342\234\227 Byte %0d mismatch: got %02h, expected %02h", v0x98b09c3c0_0, v0x98b09ca00_0, &A<v0x98b09cdc0, v0x98b09c3c0_0 > {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+T_8.68 ;
+    %load/vec4 v0x98b09c3c0_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09c3c0_0, 0, 32;
+    %load/vec4 v0x98b09c960_0;
+    %addi 1, 0, 32;
+    %store/vec4 v0x98b09c960_0, 0, 32;
+    %jmp T_8.66;
+T_8.67 ;
+    %load/vec4 v0x98b09c3c0_0;
+    %cmpi/ne 12, 0, 32;
+    %jmp/0xz  T_8.70, 6;
+    %vpi_call/w 3 535 "$display", "  \342\234\227 Expected 12 bytes, got %0d", v0x98b09c3c0_0 {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+    %jmp T_8.71;
+T_8.70 ;
+    %vpi_call/w 3 538 "$display", "  \342\234\223 All 12 bytes correct in stress test" {0 0 0};
+T_8.71 ;
+    %load/vec4 v0x98b09c3c0_0;
+    %muli 8, 0, 32;
+    %load/vec4 v0x103359870_0;
+    %pad/u 32;
+    %add;
+    %store/vec4 v0x98b09c780_0, 0, 32;
+    %load/vec4 v0x98b09c780_0;
+    %load/vec4 v0x98b09c140_0;
+    %cmp/ne;
+    %jmp/0xz  T_8.72, 6;
+    %vpi_call/w 3 544 "$display", "  \342\234\227 Scoreboard mismatch: sent %0d, accounted %0d", v0x98b09c140_0, v0x98b09c780_0 {0 0 0};
+    %pushi/vec4 0, 0, 1;
+    %store/vec4 v0x98b09d0e0_0, 0, 1;
+    %jmp T_8.73;
+T_8.72 ;
+    %vpi_call/w 3 547 "$display", "  \342\234\223 Scoreboard balanced: %0d bits", v0x98b09c140_0 {0 0 0};
+T_8.73 ;
+    %fork TD_tb_bit_packer_8x.end_test, S_0x10335f2a0;
+    %join;
+    %vpi_call/w 3 555 "$display", "\000" {0 0 0};
+    %vpi_call/w 3 556 "$display", "=======================================================" {0 0 0};
+    %vpi_call/w 3 557 "$display", "Test Summary" {0 0 0};
+    %vpi_call/w 3 558 "$display", "=======================================================" {0 0 0};
+    %vpi_call/w 3 559 "$display", "Total:  %0d", v0x98b09d040_0 {0 0 0};
+    %vpi_call/w 3 560 "$display", "Passed: %0d", v0x98b09cc80_0 {0 0 0};
+    %vpi_call/w 3 561 "$display", "Failed: %0d", v0x98b09c820_0 {0 0 0};
+    %load/vec4 v0x98b09c820_0;
+    %cmpi/e 0, 0, 32;
+    %jmp/0xz  T_8.74, 4;
+    %vpi_call/w 3 564 "$display", "\000" {0 0 0};
+    %vpi_call/w 3 565 "$display", "*** ALL TESTS PASSED! ***" {0 0 0};
+    %jmp T_8.75;
+T_8.74 ;
+    %vpi_call/w 3 567 "$display", "\000" {0 0 0};
+    %vpi_call/w 3 568 "$display", "*** SOME TESTS FAILED ***" {0 0 0};
+T_8.75 ;
+    %vpi_call/w 3 570 "$display", "=======================================================" {0 0 0};
+    %vpi_call/w 3 572 "$finish" {0 0 0};
+    %end;
+    .thread T_8;
+# The file index is used to find the file name in the following table.
+:file_names 5;
+    "N/A";
+    "<interactive>";
+    "-";
+    "test/tb_bit_packer_8x.v";
+    "src/bit_packer_8x.v";
