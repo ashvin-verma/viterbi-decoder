@@ -6,14 +6,11 @@ SIM ?= icarus
 WAVES ?= 1
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = viterbi_core.v \
-	branch_metric.v \
-	expected_bits.v \
-	ham2.v \
-	acs_core.v \
-	pm_bank.v \
-	survivor_mem.v \
-	traceback.v
+PROJECT_SOURCES = project.v \
+	conv_encoder.v \
+	uart_conv_encoder.v \
+	sym_unpacker_4x.v \
+	bit_packer_8x.v
 
 ifneq ($(GATES),yes)
 

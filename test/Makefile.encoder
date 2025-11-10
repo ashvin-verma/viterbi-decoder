@@ -87,8 +87,15 @@ compile_uart:
 sim_uart: compile_uart
 	$(VVP) tb_uart.vvp
 
+# Project (top-level) comprehensive test
+compile_project:
+	$(IVERILOG) -g2005 -o tb.vvp $(SRC_DIR)/project.v $(ENCODER_SRC) $(SRC_DIR)/sym_unpacker_4x.v $(SRC_DIR)/bit_packer_8x.v $(SRC_DIR)/uart_conv_encoder.v $(TEST_DIR)/tb.v
+
+sim_project: compile_project
+	$(VVP) tb.vvp
+
 # Run all tests
-test_all: sim_encoder test_all_k sim_uart
+test_all: sim_encoder test_all_k sim_uart sim_project
 	@echo "=== All encoder tests completed ==="
 
 # Run with waveform viewer (requires GTKWave)
