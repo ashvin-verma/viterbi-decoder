@@ -6,55 +6,110 @@ from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
 
 
-async def _send_symbol(dut, sym):
-    """Wait for ready, drive a single symbol for one cycle, then release."""
-    while not dut.rx_sym_ready.value:
-        await RisingEdge(dut.clk)
-
-    dut.rx_sym.value = sym & 0x3
-    dut.rx_sym_valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.rx_sym_valid.value = 0
-
-    # Wait for the core to finish its sweep before sending the next symbol
-    while not dut.rx_sym_ready.value:
-        await RisingEdge(dut.clk)
+def encode_k3(state, bit_in):
+    """Golden reference for K=3 encoder (G0=7, G1=5)"""
+    new_state = (bit_in << 2) | (state >> 1)
+    g0 = bin(new_state & 0b111).count('1') % 2
+    g1 = bin(new_state & 0b101).count('1') % 2
+    return (g0 << 1) | g1, (state & 0x3) >> 1 | (bit_in << 1)
 
 
 @cocotb.test()
-async def test_viterbi_core_smoke(dut):
-    dut._log.info("Start Viterbi core smoke test")
+async def test_encoder_mode0_k3(dut):
+    """Test Mode 0: Small K=3 encoder"""
+    dut._log.info("Start K=3 encoder test (Mode 0)")
 
-    clock = Clock(dut.clk, 10, unit="ns")
+    # Access the DUT instance within tb
+    encoder = dut.dut
+
+    clock = Clock(encoder.clk, 10, unit="ns")
     cocotb.start_soon(clock.start())
 
-    # Reset and default inputs
-    dut.rst.value = 1
-    dut.rx_sym_valid.value = 0
-    dut.rx_sym.value = 0
-    dut.force_state0.value = 0
+    # Reset
+    encoder.rst_n.value = 0
+    encoder.ui_in.value = 0
+    encoder.uio_in.value = 0
+    encoder.ena.value = 1
 
-    await ClockCycles(dut.clk, 5)
-    dut.rst.value = 0
+    await ClockCycles(encoder.clk, 5)
+    encoder.rst_n.value = 1
+    await ClockCycles(encoder.clk, 2)
 
-    # The controller should expose ready once reset is released.
-    for _ in range(20):
-        await RisingEdge(dut.clk)
-        if dut.rx_sym_ready.value:
+    # Set mode to 0 (K=3 small encoder)
+    encoder.ui_in.value = 0b00_000000  # mode=00
+    await ClockCycles(encoder.clk, 1)
+
+    # Test encoding a sequence
+    test_bits = [1, 0, 1, 1, 0, 0, 1, 0]
+    state = 0
+
+    for i, bit in enumerate(test_bits):
+        # Calculate expected output
+        expected_sym, state = encode_k3(state, bit)
+        
+        # Drive input
+        encoder.ui_in.value = 0b00_000001 | (bit << 1)  # mode=00, in_valid=1, in_bit
+        await RisingEdge(encoder.clk)
+        
+        # Check output
+        out_valid = encoder.uo_out.value & 0x1
+        out_sym = (encoder.uo_out.value >> 1) & 0x3
+        
+        if out_valid != 1:
+            raise AssertionError(f"Bit {i}: out_valid={out_valid}, expected 1")
+        if out_sym != expected_sym:
+            raise AssertionError(f"Bit {i}: out_sym={out_sym:02b}, expected {expected_sym:02b}")
+        
+        # Deassert in_valid
+        encoder.ui_in.value = 0b00_000000
+        await RisingEdge(encoder.clk)
+
+    dut._log.info("K=3 encoder test passed")
+
+
+@cocotb.test()
+async def test_encoder_mode2_uart(dut):
+    """Test Mode 2: UART encoder basic functionality"""
+    dut._log.info("Start UART encoder test (Mode 2)")
+
+    # Access the DUT instance within tb
+    encoder = dut.dut
+
+    clock = Clock(encoder.clk, 10, unit="ns")
+    cocotb.start_soon(clock.start())
+
+    # Reset
+    encoder.rst_n.value = 0
+    encoder.ui_in.value = 0
+    encoder.uio_in.value = 0
+    encoder.ena.value = 1
+
+    await ClockCycles(encoder.clk, 5)
+    encoder.rst_n.value = 1
+    await ClockCycles(encoder.clk, 2)
+
+    # Set mode to 2 (UART encoder)
+    encoder.ui_in.value = 0b10_000000  # mode=10
+    await ClockCycles(encoder.clk, 2)
+
+    # Send a byte
+    test_byte = 0xA5
+    encoder.uio_in.value = test_byte
+    encoder.ui_in.value = 0b10_000001  # mode=10, in_valid=1
+    await RisingEdge(encoder.clk)
+    
+    encoder.ui_in.value = 0b10_000000  # Deassert in_valid
+    await ClockCycles(encoder.clk, 2)
+
+    # Wait for output valid (with timeout)
+    timeout = 100
+    for _ in range(timeout):
+        if encoder.uo_out.value & 0x1:  # out_valid
+            dut._log.info(f"Output received: 0x{encoder.uo_out.value:02x}")
             break
+        await RisingEdge(encoder.clk)
     else:
-        raise AssertionError("rx_sym_ready never asserted after reset")
+        raise AssertionError("No output received within timeout")
 
-    # Feed a short sequence of symbols (placeholder data)
-    symbols = [0, 1, 2, 3]
-    for sym in symbols:
-        await _send_symbol(dut, sym)
+    dut._log.info("UART encoder test passed")
 
-    # Force traceback after a few more idle cycles
-    await ClockCycles(dut.clk, 5)
-    dut.force_state0.value = 1
-    await ClockCycles(dut.clk, 1)
-    dut.force_state0.value = 0
-
-    await ClockCycles(dut.clk, 40)
-    dut._log.info("Smoke test completed")
