@@ -32,8 +32,15 @@ module traceback #(
     reg [1:0] state;
     reg [$clog2(D)-1:0] tb_count;
     reg [M-1:0] current_state;
-    reg traceback_active;  // Flag to ignore force_state0 when busy
+    reg traceback_active;  // Flag to prevent overlapping tracebacks
     reg decoded_bit_reg;   // Store the decoded bit
+    reg [$clog2(D)-1:0] wr_ptr_prev;  // Track wr_ptr changes
+    reg [$clog2(D)-1:0] warmup_count; // Count symbols until D reached
+    reg streaming_enabled;  // Enable streaming after warmup
+    
+    // Detect wr_ptr advancement (symbol write completed)
+    wire wr_ptr_advanced = (wr_ptr != wr_ptr_prev);
+    wire should_traceback = wr_ptr_advanced && streaming_enabled && !traceback_active;
     
     always @(posedge clk) begin
         if (rst) begin
@@ -46,19 +53,35 @@ module traceback #(
             dec_bit <= 0;
             traceback_active <= 0;
             decoded_bit_reg <= 0;
+            wr_ptr_prev <= 0;
+            warmup_count <= 0;
+            streaming_enabled <= 0;
         end else begin
+            // Track wr_ptr changes for warmup counting
+            if (wr_ptr_advanced) begin
+                wr_ptr_prev <= wr_ptr;
+                if (!streaming_enabled) begin
+                    warmup_count <= warmup_count + 1;
+                    // Enable streaming after D symbols have been written
+                    if (warmup_count >= D - 1) begin
+                        streaming_enabled <= 1;
+                    end
+                end
+            end
+            
             case (state)
                 IDLE: begin
                     dec_bit_valid <= 0;
-                    if (force_state0 && !traceback_active) begin
+                    // Streaming mode: trigger on every wr_ptr advance after warmup
+                    if (should_traceback) begin
                         state <= INIT;
                         tb_count <= 0;
                         traceback_active <= 1;
                         // Start at end time and end state
                         // wr_ptr points to where NEXT write will go, so last written is wr_ptr-1
-                        current_state <= s_end;
+                        current_state <= force_state0 ? {M{1'b0}} : s_end;
                         tb_time <= (wr_ptr == 0) ? (D-1) : (wr_ptr - 1);
-                        tb_state <= s_end;
+                        tb_state <= force_state0 ? {M{1'b0}} : s_end;
                     end
                 end
                 
