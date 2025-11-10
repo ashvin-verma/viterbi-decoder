@@ -3,7 +3,7 @@
 module tt_um_viterbi_core #(
     parameter int K       = 4,
     parameter int D       = 24,
-    parameter int Wm      = 6,
+    parameter int Wm      = 4,
     parameter int G0_OCT  = 'o17,  // K=4 default (17,13)
     parameter int G1_OCT  = 'o13
 )(

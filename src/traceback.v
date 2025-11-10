@@ -1,11 +1,12 @@
 module traceback #(
-    parameter M = 6,          // Number of bits in state
+    parameter K = 7,          // Constraint length
+    parameter M = K - 1,      // Number of bits in state
     parameter D = 40          // Traceback depth
 )(
     input wire clk,
     input wire rst,
     
-    // Write pointer from survivor memory
+    // Write pointer from survivor memory (current time index in circular buffer)
     input wire [$clog2(D)-1:0] wr_ptr,
     
     // End state inputs
@@ -21,65 +22,19 @@ module traceback #(
     output reg dec_bit_valid,
     output reg dec_bit
 );
-// Traceback counter and state tracking
-always @(posedge clk) begin
-    if (rst) begin
-        tb_count <= 0;
-        current_state <= 0;
-        tb_time <= 0;
-        tb_state <= 0;
-        dec_bit_valid <= 0;
-        dec_bit <= 0;
-    end else begin
-        case (state)
-            IDLE: begin
-                tb_count <= 0;
-                dec_bit_valid <= 0;
-                if (force_state0) begin
-                    // Initialize traceback from end state
-                    current_state <= s_end;
-                    tb_time <= wr_ptr;
-                    tb_state <= s_end;
-                end
-            end
-            
-            TRACEBACK: begin
-                // Read survivor bit at current (time, state)
-                tb_time <= (tb_time == 0) ? (D-1) : (tb_time - 1);
-                tb_state <= current_state;
-                
-                // Update state based on survivor bit from previous cycle
-                if (tb_count > 0) begin
-                    // Shift current_state right by 1 and insert survivor bit at MSB
-                    current_state <= {tb_surv_bit, current_state[M-1:1]};
-                end
-                
-                tb_count <= tb_count + 1;
-            end
-            
-            DECODE: begin
-                // Output the decoded bit (survivor bit from last traceback step)
-                dec_bit <= tb_surv_bit;
-                dec_bit_valid <= 1'b1;
-            end
-        endcase
-    end
-end
-    // Internal state machine
+
+    // State machine states
     localparam IDLE      = 2'b00;
-    localparam TRACEBACK = 2'b01;
-    localparam DECODE    = 2'b10;
+    localparam INIT      = 2'b01;
+    localparam TRACEBACK = 2'b10;
+    localparam OUTPUT    = 2'b11;
     
-    reg [1:0] state, next_state;
-    
-    // Traceback counter
+    reg [1:0] state;
     reg [$clog2(D)-1:0] tb_count;
-    
-    // Current state being traced
     reg [M-1:0] current_state;
+    reg traceback_active;  // Flag to ignore force_state0 when busy
+    reg decoded_bit_reg;   // Store the decoded bit
     
-    // State machine
-    // Traceback counter and state tracking
     always @(posedge clk) begin
         if (rst) begin
             state <= IDLE;
@@ -89,43 +44,67 @@ end
             tb_state <= 0;
             dec_bit_valid <= 0;
             dec_bit <= 0;
+            traceback_active <= 0;
+            decoded_bit_reg <= 0;
         end else begin
             case (state)
                 IDLE: begin
-                    tb_count <= 0;
                     dec_bit_valid <= 0;
-                    if (force_state0) begin
-                        state <= TRACEBACK;
-                        // Initialize traceback from end state
+                    if (force_state0 && !traceback_active) begin
+                        state <= INIT;
+                        tb_count <= 0;
+                        traceback_active <= 1;
+                        // Start at end time and end state
+                        // wr_ptr points to where NEXT write will go, so last written is wr_ptr-1
                         current_state <= s_end;
-                        tb_time <= wr_ptr;
+                        tb_time <= (wr_ptr == 0) ? (D-1) : (wr_ptr - 1);
                         tb_state <= s_end;
                     end
                 end
                 
+                INIT: begin
+                    // Wait one cycle for memory read to complete
+                    // tb_time and tb_state are already set up
+                    // On the NEXT cycle, tb_surv_bit will be valid with mem[tb_time][tb_state]
+                    state <= TRACEBACK;
+                    dec_bit_valid <= 0;
+                    tb_count <= 0;
+                end
+                
                 TRACEBACK: begin
-                    // Read survivor bit at current (time, state)
-                    tb_time <= (tb_time == 0) ? (D-1) : (tb_time - 1);
-                    tb_state <= current_state;
+                    // On FIRST cycle (tb_count==0), capture the bit - this is the decoded output
+                    if (tb_count == 0) begin
+                        decoded_bit_reg <= tb_surv_bit;
+                    end
                     
-                    // Update state based on survivor bit from previous cycle
+                    // Update state based on the survivor bit we just read
+                    if (tb_surv_bit) begin
+                        current_state <= (current_state >> 1) | (1 << (M-1));
+                        tb_state <= (current_state >> 1) | (1 << (M-1));
+                    end else begin
+                        current_state <= current_state >> 1;
+                        tb_state <= current_state >> 1;
+                    end
+                    
+                    // Move to previous time (but NOT on first cycle - we just read the current time!)
                     if (tb_count > 0) begin
-                        // Shift current_state right by 1 and insert survivor bit at MSB
-                        current_state <= {tb_surv_bit, current_state[M-1:1]};
+                        tb_time <= (tb_time == 0) ? (D-1) : (tb_time - 1);
                     end
                     
                     tb_count <= tb_count + 1;
                     
-                    if (tb_count == D-1) begin
-                        state <= DECODE;
+                    // After D iterations, output the bit we saved
+                    if (tb_count == D - 1) begin
+                        state <= OUTPUT;
                     end
                 end
                 
-                DECODE: begin
-                    // Output the decoded bit (survivor bit from last traceback step)
-                    dec_bit <= tb_surv_bit;
+                OUTPUT: begin
+                    // Output the decoded bit from the FIRST traceback step
+                    dec_bit <= decoded_bit_reg;
                     dec_bit_valid <= 1'b1;
-                    state <= IDLE;  // Transition back to IDLE unconditionally
+                    traceback_active <= 0;  // Allow next traceback to start
+                    state <= IDLE;
                 end
                 
                 default: begin
@@ -133,30 +112,6 @@ end
                 end
             endcase
         end
-    end
-        
-    // Next state logic
-    always @(*) begin
-        case (state)
-            IDLE: begin
-                if (force_state0) begin
-                    next_state = TRACEBACK;
-                end
-            end
-            TRACEBACK: begin
-                if (tb_count == D-1) begin
-                    next_state = DECODE;
-                end
-            end
-            DECODE: begin
-                if (dec_bit_valid) begin
-                    next_state = IDLE;
-                end
-            end
-            default: begin
-                next_state = IDLE;
-            end
-        endcase
     end
 
 endmodule
