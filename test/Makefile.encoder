@@ -41,6 +41,56 @@ compile_encoder: $(ENCODER_SRC) $(TB_SRC)
 sim_encoder: compile_encoder
 	$(VVP) $(VVP_OUT)
 
+# K=4 test
+compile_k4:
+	$(IVERILOG) -g2005 -o tb_k4.vvp $(ENCODER_SRC) $(TEST_DIR)/tb_conv_encoder_k4.v
+
+sim_k4: compile_k4
+	$(VVP) tb_k4.vvp
+
+# K=5 test
+compile_k5:
+	$(IVERILOG) -g2005 -o tb_k5.vvp $(ENCODER_SRC) $(TEST_DIR)/tb_conv_encoder_k5.v
+
+sim_k5: compile_k5
+	$(VVP) tb_k5.vvp
+
+# K=6 test
+compile_k6:
+	$(IVERILOG) -g2005 -o tb_k6.vvp $(ENCODER_SRC) $(TEST_DIR)/tb_conv_encoder_k6.v
+
+sim_k6: compile_k6
+	$(VVP) tb_k6.vvp
+
+# K=7 test
+compile_k7:
+	$(IVERILOG) -g2005 -o tb_k7.vvp $(ENCODER_SRC) $(TEST_DIR)/tb_conv_encoder_k7.v
+
+sim_k7: compile_k7
+	$(VVP) tb_k7.vvp
+
+# K=9 test
+compile_k9:
+	$(IVERILOG) -g2005 -o tb_k9.vvp $(ENCODER_SRC) $(TEST_DIR)/tb_conv_encoder_k9.v
+
+sim_k9: compile_k9
+	$(VVP) tb_k9.vvp
+
+# Run all K tests
+test_all_k: sim_k4 sim_k5 sim_k6 sim_k7 sim_k9
+	@echo "All K parameter tests completed"
+
+# UART encoder test
+compile_uart:
+	$(IVERILOG) -g2005 -o tb_uart.vvp $(ENCODER_SRC) $(SRC_DIR)/sym_unpacker_4x.v $(SRC_DIR)/bit_packer_8x.v $(SRC_DIR)/uart_conv_encoder.v $(TEST_DIR)/tb_uart_conv_encoder_simple.v
+
+sim_uart: compile_uart
+	$(VVP) tb_uart.vvp
+
+# Run all tests
+test_all: sim_encoder test_all_k sim_uart
+	@echo "=== All encoder tests completed ==="
+
 # Run with waveform viewer (requires GTKWave)
 wave: sim_encoder
 	@if [ -f $(VCD_OUT) ]; then \

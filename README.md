@@ -1,12 +1,36 @@
 ![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
 
-# Convolutional Encoder - Tiny Tapeout Project
+# Multi-Mode Convolutional Encoder - Tiny Tapeout Project
 
 - [Read the documentation for project](docs/info.md)
 
 ## Overview
 
-This project implements a rate 1/2 convolutional encoder with constraint length K=3. It takes single input bits and produces two output symbol bits for forward error correction.
+This project implements a multi-mode rate 1/2 convolutional encoder with three operating modes:
+- **Mode 00**: K=3 encoder (low complexity, generators 7,5 octal)
+- **Mode 01**: K=7 encoder (NASA standard, generators 171,133 octal)  
+- **Mode 10**: UART byte interface (K=3 with packing/unpacking)
+
+Convolutional encoding adds redundancy for forward error correction, commonly used in satellite communications, deep space missions, and wireless systems.
+
+## Features
+
+- Parameterizable constraint length (K=3 to K=9 tested)
+- NASA standard generator polynomials
+- Three selectable modes via mode pins
+- Streaming valid/ready handshaking
+- UART byte-oriented interface option
+- Compact Verilog-2001 design
+
+## How to Use
+
+1. Select mode using `ui_in[7:6]`
+2. For direct modes (00/01): Send bits via `ui_in[0]` (valid) and `ui_in[1]` (bit data)
+3. For UART mode (10): Send bytes via `uio_in[7:0]` with `ui_in[0]` as valid
+4. Read encoded output from `uo_out[2:1]` (symbol) or `uo_out[7:1]` (UART bytes)
+
+See [docs/info.md](docs/info.md) for detailed pin assignments and modes.
+
 
 ## What is Tiny Tapeout?
 

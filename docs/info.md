@@ -1,20 +1,17 @@
-<!---
-
-This file is used to generate your project datasheet. Please fill in the information below and delete any unused
-sections.
-
-You can also include images in this folder and reference them in the markdown. Each image must be less than
-512 kb in size, and the combined size of all images must be less than 1 MB.
--->
-
 ## How it works
 
-This is a convolutional encoder that encodes input bits into symbols for error correction. It implements a rate 1/2 convolutional encoder with constraint length K=3, using generator polynomials G0=7 (octal) and G1=5 (octal). For each input bit, it produces two output symbol bits.
+Multi-mode convolutional encoder with three modes:
+
+Mode 00 (K=3): Small encoder, G0=7, G1=5 octal
+Mode 01 (K=7): NASA standard, G0=171, G1=133 octal  
+Mode 10: UART byte interface with K=3 encoder
+
+Each mode implements rate 1/2 encoding: 1 input bit produces 2 output bits.
 
 ## How to test
 
-Provide input bits through the BIT_IN pin with BIT_VALID high. The encoder will output two symbol bits (SYM_OUT0, SYM_OUT1) when SYM_VALID goes high.
+Mode selection via ui_in[7:6]. For direct modes (00/01), send bits via ui_in[0:1]. For UART mode (10), send bytes via uio_in[7:0]. Read encoded output from uo_out.
 
 ## External hardware
 
-FPGA or microcontroller to provide input bits and capture encoded symbols.
+Microcontroller or FPGA for pattern generation and output capture.
