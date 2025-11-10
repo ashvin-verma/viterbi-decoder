@@ -19,27 +19,20 @@ module survivor_mem #(
 );
 
   reg [S-1:0] mem [0:D-1];
+  integer i;
 
   always @(posedge clk) begin
     if (rst) begin
       wr_ptr <= {$clog2(D){1'b0}};
-      mem[0] <= {S{1'b0}};
-      mem[1] <= {S{1'b0}};
-      mem[2] <= {S{1'b0}};
-      mem[3] <= {S{1'b0}};
-      mem[4] <= {S{1'b0}};
-      mem[5] <= {S{1'b0}};
-      mem[6] <= {S{1'b0}};
-      mem[7] <= {S{1'b0}};
-      mem[8] <= {S{1'b0}};
-      mem[9] <= {S{1'b0}};
+      for (i = 0; i < D; i = i + 1) begin
+        mem[i] <= {S{1'b0}};
+      end
     end else if (wr_en) begin
       mem[wr_ptr] <= surv_row;
       if (wr_ptr == D - 1)
         wr_ptr <= {$clog2(D){1'b0}};
       else
         wr_ptr <= wr_ptr + 1;
-    end else begin
     end
   end
 

@@ -23,117 +23,102 @@ module traceback #(
     output reg dec_bit
 );
 
-    // State machine states
-    localparam IDLE      = 2'b00;
-    localparam INIT      = 2'b01;
-    localparam TRACEBACK = 2'b10;
-    localparam OUTPUT    = 2'b11;
+    // Simplified streaming design:
+    // After warmup (D symbols), continuously run traceback
+    // Each traceback takes D cycles, produces 1 bit
+    // Need to track: when did we last START a traceback?
     
-    reg [1:0] state;
-    reg [$clog2(D)-1:0] tb_count;
+    reg [$clog2(D)-1:0] wr_ptr_prev;
+    reg [$clog2(D)-1:0] warmup_count;
+    reg streaming_mode;
+    
+    reg [$clog2(D)-1:0] tb_step;  // Which step (0 to D-1) in current traceback
     reg [M-1:0] current_state;
-    reg traceback_active;  // Flag to prevent overlapping tracebacks
-    reg decoded_bit_reg;   // Store the decoded bit
-    reg [$clog2(D)-1:0] wr_ptr_prev;  // Track wr_ptr changes
-    reg [$clog2(D)-1:0] warmup_count; // Count symbols until D reached
-    reg streaming_enabled;  // Enable streaming after warmup
+    reg tb_active;
+    reg pending_start;  // New traceback needs to start
     
-    // Detect wr_ptr advancement (symbol write completed)
-    wire wr_ptr_advanced = (wr_ptr != wr_ptr_prev);
-    wire should_traceback = wr_ptr_advanced && streaming_enabled && !traceback_active;
+    wire wr_ptr_advanced = (wr_ptr != wr_ptr_prev) && !rst;
     
     always @(posedge clk) begin
         if (rst) begin
-            state <= IDLE;
-            tb_count <= 0;
+            wr_ptr_prev <= 0;
+            warmup_count <= 0;
+            streaming_mode <= 0;
+            tb_step <= 0;
             current_state <= 0;
+            tb_active <= 0;
+            pending_start <= 0;
             tb_time <= 0;
             tb_state <= 0;
             dec_bit_valid <= 0;
             dec_bit <= 0;
-            traceback_active <= 0;
-            decoded_bit_reg <= 0;
-            wr_ptr_prev <= 0;
-            warmup_count <= 0;
-            streaming_enabled <= 0;
         end else begin
-            // Track wr_ptr changes for warmup counting
+            dec_bit_valid <= 0;  // Default
+            
+            // Detect wr_ptr changes
             if (wr_ptr_advanced) begin
                 wr_ptr_prev <= wr_ptr;
-                if (!streaming_enabled) begin
+                
+                // Warmup counting
+                if (!streaming_mode) begin
                     warmup_count <= warmup_count + 1;
-                    // Enable streaming after D symbols have been written
                     if (warmup_count >= D - 1) begin
-                        streaming_enabled <= 1;
+                        streaming_mode <= 1;
+                        pending_start <= 1;  // Start first traceback
                     end
+                end else begin
+                    // In streaming mode, request new traceback
+                    pending_start <= 1;
                 end
             end
             
-            case (state)
-                IDLE: begin
-                    dec_bit_valid <= 0;
-                    // Streaming mode: trigger on every wr_ptr advance after warmup
-                    if (should_traceback) begin
-                        state <= INIT;
-                        tb_count <= 0;
-                        traceback_active <= 1;
-                        // Start at end time and end state
-                        // wr_ptr points to where NEXT write will go, so last written is wr_ptr-1
-                        current_state <= force_state0 ? {M{1'b0}} : s_end;
-                        tb_time <= (wr_ptr == 0) ? (D-1) : (wr_ptr - 1);
-                        tb_state <= force_state0 ? {M{1'b0}} : s_end;
-                    end
-                end
-                
-                INIT: begin
-                    // Wait one cycle for memory read to complete
-                    // tb_time and tb_state are already set up
-                    // On the NEXT cycle, tb_surv_bit will be valid with mem[tb_time][tb_state]
-                    state <= TRACEBACK;
-                    dec_bit_valid <= 0;
-                    tb_count <= 0;
-                end
-                
-                TRACEBACK: begin
-                    // On FIRST cycle (tb_count==0), capture the bit - this is the decoded output
-                    if (tb_count == 0) begin
-                        decoded_bit_reg <= tb_surv_bit;
-                    end
-                    
-                    // Update state based on the survivor bit we just read
+            // Traceback state machine
+            if (!tb_active && pending_start && streaming_mode) begin
+                // Start new traceback
+                tb_active <= 1;
+                pending_start <= 0;
+                tb_step <= 0;
+                current_state <= force_state0 ? {M{1'b0}} : s_end;
+                tb_time <= (wr_ptr_prev == 0) ? (D-1) : (wr_ptr_prev - 1);
+                tb_state <= force_state0 ? {M{1'b0}} : s_end;
+            end else if (tb_active) begin
+                // Continue traceback
+                if (tb_step == 0) begin
+                    // First cycle: just read the bit (tb_surv_bit valid next cycle)
+                    // Don't move yet
+                    tb_step <= tb_step + 1;
+                end else if (tb_step < D) begin
+                    // Use the survivor bit from PREVIOUS cycle
                     if (tb_surv_bit) begin
                         current_state <= (current_state >> 1) | (1 << (M-1));
-                        tb_state <= (current_state >> 1) | (1 << (M-1));
                     end else begin
                         current_state <= current_state >> 1;
+                    end
+                    
+                    // Set up next read
+                    if (tb_surv_bit) begin
+                        tb_state <= (current_state >> 1) | (1 << (M-1));
+                    end else begin
                         tb_state <= current_state >> 1;
                     end
+                    tb_time <= (tb_time == 0) ? (D-1) : (tb_time - 1);
                     
-                    // Move to previous time (but NOT on first cycle - we just read the current time!)
-                    if (tb_count > 0) begin
-                        tb_time <= (tb_time == 0) ? (D-1) : (tb_time - 1);
-                    end
+                    tb_step <= tb_step + 1;
                     
-                    tb_count <= tb_count + 1;
-                    
-                    // After D iterations, output the bit we saved
-                    if (tb_count == D - 1) begin
-                        state <= OUTPUT;
+                    // Last step: output the bit
+                    if (tb_step == D - 1) begin
+                        dec_bit <= current_state[0];  // LSB is info bit
+                        dec_bit_valid <= 1;
+                        tb_active <= 0;
                     end
                 end
-                
-                OUTPUT: begin
-                    // Output the decoded bit from the FIRST traceback step
-                    dec_bit <= decoded_bit_reg;
-                    dec_bit_valid <= 1'b1;
-                    traceback_active <= 0;  // Allow next traceback to start
-                    state <= IDLE;
+            end
+        end
+    end
+
+endmodule
                 end
-                
-                default: begin
-                    state <= IDLE;
-                end
-            endcase
+            end
         end
     end
 

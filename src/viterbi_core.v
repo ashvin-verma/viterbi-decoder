@@ -23,9 +23,10 @@ module tt_um_viterbi_core #(
     input  logic        force_state0
 );
 
-    localparam int M  = (K > 1) ? (K - 1) : 1;
-    localparam int S  = 1 << M;
-    localparam int Wb = 2;
+    localparam int M              = (K > 1) ? (K - 1) : 1;
+    localparam int S              = 1 << M;
+    localparam int Wb             = 2;
+    localparam int TRACE_ADDR_W   = (D > 1) ? $clog2(D) : 1;
 
     initial begin
         if (K < 2) begin
@@ -36,7 +37,8 @@ module tt_um_viterbi_core #(
     typedef enum logic [1:0] {
         ST_IDLE,
         ST_SWEEP,
-        ST_COMMIT
+        ST_COMMIT,
+        ST_TRACE
     } state_t;
 
     state_t state, state_next;
@@ -71,6 +73,14 @@ module tt_um_viterbi_core #(
     logic                         trace_surv_bit;
     logic                         tb_dec_valid;
     logic                         tb_dec_bit;
+    logic                         tb_busy;
+    logic                         tb_start;
+    logic [TRACE_ADDR_W-1:0]      tb_start_time;
+    logic [M-1:0]                 tb_start_state;
+`ifdef VITERBI_CORE_DEBUG
+    integer                       dbg_accepts;
+    integer                       dbg_commits;
+`endif
 
     assign rx_sym_ready = (state == ST_IDLE);
     assign accept_sym   = rx_sym_valid && rx_sym_ready;
@@ -83,8 +93,16 @@ module tt_um_viterbi_core #(
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             state <= ST_IDLE;
+`ifdef VITERBI_CORE_DEBUG
+            dbg_accepts <= 0;
+            dbg_commits <= 0;
+`endif
         end else begin
             state <= state_next;
+`ifdef VITERBI_CORE_DEBUG
+            if (accept_sym) dbg_accepts <= dbg_accepts + 1;
+            if (state == ST_COMMIT) dbg_commits <= dbg_commits + 1;
+`endif
         end
     end
 
@@ -102,7 +120,12 @@ module tt_um_viterbi_core #(
                 end
             end
             ST_COMMIT: begin
-                state_next = ST_IDLE;
+                state_next = ST_TRACE;
+            end
+            ST_TRACE: begin
+                if (!tb_busy) begin
+                    state_next = ST_IDLE;
+                end
             end
             default: state_next = ST_IDLE;
         endcase
@@ -182,10 +205,12 @@ module tt_um_viterbi_core #(
     // Branch infrastructure --------------------------------------------------
     localparam logic [M-1:0] MSB_MASK = (1 << (M-1));
     logic [M-1:0] base_pred;
+    logic         bit_in;
 
     assign base_pred = sweep_idx >> 1;
     assign p0        = base_pred;
     assign p1        = base_pred | MSB_MASK;
+    assign bit_in    = sweep_idx[0];
 
     expected_bits #(
         .K      (K),
@@ -193,7 +218,7 @@ module tt_um_viterbi_core #(
         .G1_OCT (G1_OCT)
     ) expect0 (
         .pred    (p0),
-        .b       (1'b0),
+        .b       (bit_in),
         .expected(exp0)
     );
 
@@ -203,7 +228,7 @@ module tt_um_viterbi_core #(
         .G1_OCT (G1_OCT)
     ) expect1 (
         .pred    (p1),
-        .b       (1'b1),
+        .b       (bit_in),
         .expected(exp1)
     );
 
@@ -263,25 +288,41 @@ module tt_um_viterbi_core #(
     );
 
     wire [M-1:0] s_end_mux = force_state0 ? {M{1'b0}} : s_end_state;
+    wire [TRACE_ADDR_W-1:0] surv_row_time =
+        (surv_wr_ptr == {TRACE_ADDR_W{1'b0}})
+            ? TRACE_ADDR_W'(D > 0 ? D - 1 : 0)
+            : (surv_wr_ptr - TRACE_ADDR_W'(1));
 
-    traceback #(
+    assign tb_start       = (state == ST_COMMIT);
+    assign tb_start_time  = surv_row_time;
+    assign tb_start_state = s_end_mux;
+
+    traceback_v2 #(
         .M (M),
         .D (D)
     ) tb_core (
         .clk          (clk),
         .rst          (rst),
-        .wr_ptr       (surv_wr_ptr),
-        .s_end        (s_end_mux),
+        .start        (tb_start),
+        .start_time   (tb_start_time),
+        .start_state  (tb_start_state),
         .force_state0 (force_state0),
         .tb_time      (tb_time),
         .tb_state     (tb_state),
         .tb_surv_bit  (trace_surv_bit),
+        .busy         (tb_busy),
         .dec_bit_valid(tb_dec_valid),
         .dec_bit      (tb_dec_bit)
     );
 
     assign dec_bit_valid = tb_dec_valid;
     assign dec_bit       = tb_dec_bit;
+
+`ifdef VITERBI_CORE_DEBUG
+    final begin
+        $display("VITERBI_CORE stats: accepts=%0d commits=%0d", dbg_accepts, dbg_commits);
+    end
+`endif
 
 endmodule
 

@@ -1,0 +1,50 @@
+# Makefile for Viterbi Decoder Level 0 Test
+
+SRC_DIR = ../src
+TEST_DIR = .
+
+# Verilog sources
+VERILOG_SOURCES = \
+	$(SRC_DIR)/viterbi_core.v \
+	$(SRC_DIR)/branch_metric.v \
+	$(SRC_DIR)/ham2.v \
+	$(SRC_DIR)/acs_core.v \
+	$(SRC_DIR)/pm_bank.v \
+	$(SRC_DIR)/survivor_mem.v \
+	$(SRC_DIR)/traceback_v2.v \
+	$(SRC_DIR)/expected_bits.v \
+	$(TEST_DIR)/tb_viterbi_level0_simple.v
+
+# Testbench
+TB_MODULE = tb_viterbi_level0_simple
+
+# Output
+VVP_FILE = tb_viterbi_level0_simple.vvp
+VCD_FILE = tb_viterbi_level0_simple.vcd
+
+# iverilog flags
+VERILOG_FLAGS = -g2012 -s $(TB_MODULE)
+
+.PHONY: all compile run clean view
+
+all: compile run
+
+compile: $(VVP_FILE)
+
+$(VVP_FILE): $(VERILOG_SOURCES)
+	iverilog $(VERILOG_FLAGS) -o $(VVP_FILE) $(VERILOG_SOURCES)
+
+run: $(VVP_FILE)
+	vvp $(VVP_FILE)
+
+view: $(VCD_FILE)
+	gtkwave $(VCD_FILE) tb.gtkw &
+
+clean:
+	rm -f $(VVP_FILE) $(VCD_FILE)
+
+# Generate test vectors (K=3)
+vectors:
+	cd ../c-tests && gcc -o gen_test_vectors gen_test_vectors.c -DK=3 -DG0_OCT=07 -DG1_OCT=05 -DD_TB=6 -DL_FRAME=256 -Wall -Wextra
+	cd ../c-tests && ./gen_test_vectors 10 42 > ../test/test_vectors_k3.txt
+	@echo "Generated test_vectors_k3.txt"

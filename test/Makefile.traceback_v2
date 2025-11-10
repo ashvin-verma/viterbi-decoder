@@ -1,0 +1,37 @@
+# Makefile for Traceback V2 Module Test
+
+SRC_DIR = ../src
+TEST_DIR = .
+
+# Verilog sources
+VERILOG_SOURCES = \
+	$(SRC_DIR)/traceback_v2.v \
+	$(TEST_DIR)/tb_traceback_v2.v
+
+# Testbench
+TB_MODULE = tb_traceback_v2
+
+# Output
+VVP_FILE = tb_traceback_v2.vvp
+VCD_FILE = tb_traceback_v2.vcd
+
+# iverilog flags
+VERILOG_FLAGS = -g2012 -s $(TB_MODULE)
+
+.PHONY: all compile run clean view
+
+all: compile run
+
+compile: $(VVP_FILE)
+
+$(VVP_FILE): $(VERILOG_SOURCES)
+	iverilog $(VERILOG_FLAGS) -o $(VVP_FILE) $(VERILOG_SOURCES)
+
+run: $(VVP_FILE)
+	vvp $(VVP_FILE)
+
+view: $(VCD_FILE)
+	gtkwave $(VCD_FILE) &
+
+clean:
+	rm -f $(VVP_FILE) $(VCD_FILE)
