@@ -1,6 +1,8 @@
 `default_nettype none
 `timescale 1ns / 1ps
 
+`include "../src/tt_um_viterbi_core.v"
+
 /* Simple structural wrapper that instantiates the viterbi_core directly so
    cocotb can exercise the symbol-rate handshake. */
 module tb ();
