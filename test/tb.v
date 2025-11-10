@@ -1,9 +1,8 @@
 `default_nettype none
 `timescale 1ns / 1ps
 
-/* This testbench just instantiates the module and makes some convenient wires
-   that can be driven / tested by the cocotb test.py.
-*/
+/* Simple structural wrapper that instantiates the viterbi_core directly so
+   cocotb can exercise the symbol-rate handshake. */
 module tb ();
 
   // Dump the signals to a VCD file. You can view it with gtkwave or surfer.
@@ -13,37 +12,51 @@ module tb ();
     #1;
   end
 
-  // Wire up the inputs and outputs:
+  // Expose clock/reset so cocotb can drive them.
   reg clk;
-  reg rst_n;
-  reg ena;
-  reg [7:0] ui_in;
-  reg [7:0] uio_in;
-  wire [7:0] uo_out;
-  wire [7:0] uio_out;
-  wire [7:0] uio_oe;
-`ifdef GL_TEST
-  wire VPWR = 1'b1;
-  wire VGND = 1'b0;
-`endif
+  reg rst;
 
-  // Replace tt_um_example with your module name:
-  tt_um_ashvin_viterbi user_project (
+  // Symbol-rate interface
+  reg        rx_sym_valid;
+  wire       rx_sym_ready;
+  reg  [1:0] rx_sym;
 
-      // Include power ports for the Gate Level test:
-`ifdef GL_TEST
-      .VPWR(VPWR),
-      .VGND(VGND),
-`endif
+  // Optional tail forcing control
+  reg        force_state0;
 
-      .ui_in  (ui_in),    // Dedicated inputs
-      .uo_out (uo_out),   // Dedicated outputs
-      .uio_in (uio_in),   // IOs: Input path
-      .uio_out(uio_out),  // IOs: Output path
-      .uio_oe (uio_oe),   // IOs: Enable path (active high: 0=input, 1=output)
-      .ena    (ena),      // enable - goes high when design is selected
-      .clk    (clk),      // clock
-      .rst_n  (rst_n)     // not reset
+  // Decoder output stream
+  wire       dec_bit_valid;
+  wire       dec_bit;
+
+  // Clock generation (100 MHz default)
+  initial begin
+    clk = 0;
+    forever #5 clk = ~clk;
+  end
+
+  // Default signal initialization; cocotb will drive thereafter.
+  initial begin
+    rst           = 1'b1;
+    rx_sym_valid  = 1'b0;
+    rx_sym        = 2'b00;
+    force_state0  = 1'b0;
+  end
+
+  viterbi_core #(
+      .K      (4),
+      .D      (24),
+      .Wm     (6),
+      .G0_OCT ('o17),
+      .G1_OCT ('o13)
+  ) dut (
+      .clk          (clk),
+      .rst          (rst),
+      .rx_sym_valid (rx_sym_valid),
+      .rx_sym_ready (rx_sym_ready),
+      .rx_sym       (rx_sym),
+      .dec_bit_valid(dec_bit_valid),
+      .dec_bit      (dec_bit),
+      .force_state0 (force_state0)
   );
 
 endmodule
