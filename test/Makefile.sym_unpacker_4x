@@ -1,0 +1,35 @@
+# Makefile for Symbol Unpacker 4x Testbench
+
+# Paths
+SRC_DIR = ../src
+TEST_DIR = .
+
+# Tools
+IVERILOG = iverilog
+VVP = vvp
+GTKWAVE = gtkwave
+
+# Files
+DUT = $(SRC_DIR)/sym_unpacker_4x.v
+TB = $(TEST_DIR)/tb_sym_unpacker_4x.v
+VVP_FILE = $(TEST_DIR)/tb_sym_unpacker_4x.vvp
+VCD_FILE = $(TEST_DIR)/tb_sym_unpacker_4x.vcd
+
+# Targets
+.PHONY: all compile run wave clean
+
+all: run
+
+compile: $(VVP_FILE)
+
+$(VVP_FILE): $(DUT) $(TB)
+	$(IVERILOG) -g2001 -o $(VVP_FILE) $(DUT) $(TB)
+
+run: $(VVP_FILE)
+	$(VVP) $(VVP_FILE)
+
+wave: $(VCD_FILE)
+	$(GTKWAVE) $(VCD_FILE) &
+
+clean:
+	rm -f $(VVP_FILE) $(VCD_FILE)

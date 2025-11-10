@@ -1,0 +1,72 @@
+#=============================================================================
+# Makefile for Survivor Memory Testbench
+#=============================================================================
+# Target: survivor_mem module testing
+# Uses Icarus Verilog (iverilog) and VVP simulator
+#=============================================================================
+
+# Tools
+IVERILOG = /opt/homebrew/bin/iverilog
+VVP = /opt/homebrew/bin/vvp
+
+# Directories
+SRC_DIR = ../src
+TEST_DIR = .
+
+# Source files
+RTL_SRC = $(SRC_DIR)/survivor_mem.v
+TB_SRC = $(TEST_DIR)/tb_survivor_mem.v
+
+# Output files
+VVP_OUT = tb_survivor_mem.vvp
+VCD_OUT = tb_survivor_mem.vcd
+
+# Verilog standard
+VERILOG_STD = -g2012
+
+#=============================================================================
+# Targets
+#=============================================================================
+
+.PHONY: all test wave clean help
+
+# Default target
+all: test
+
+# Compile and run test
+test: $(VVP_OUT)
+	@echo "Running Survivor Memory testbench..."
+	@$(VVP) $(VVP_OUT)
+
+# Compile testbench
+$(VVP_OUT): $(TB_SRC) $(RTL_SRC)
+	@echo "Compiling Survivor Memory testbench..."
+	$(IVERILOG) $(VERILOG_STD) -o $(VVP_OUT) $(TB_SRC) $(RTL_SRC)
+
+# View waveform (requires GTKWave)
+wave: $(VCD_OUT)
+	@echo "Opening waveform viewer..."
+	@if command -v gtkwave > /dev/null; then \
+		gtkwave $(VCD_OUT) & \
+	else \
+		echo "GTKWave not found. Please install it to view waveforms."; \
+	fi
+
+# Clean generated files
+clean:
+	@echo "Cleaning Survivor Memory test files..."
+	@rm -f $(VVP_OUT) $(VCD_OUT)
+
+# Help message
+help:
+	@echo "Survivor Memory Testbench Makefile"
+	@echo "==================================="
+	@echo "Targets:"
+	@echo "  make test   - Compile and run testbench (default)"
+	@echo "  make wave   - Open waveform viewer (GTKWave)"
+	@echo "  make clean  - Remove generated files"
+	@echo "  make help   - Show this help message"
+	@echo ""
+	@echo "Generated files:"
+	@echo "  $(VVP_OUT) - Compiled simulation"
+	@echo "  $(VCD_OUT) - Waveform data"

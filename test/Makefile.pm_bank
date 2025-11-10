@@ -1,0 +1,72 @@
+#=============================================================================
+# Makefile for PM Bank Testbench
+#=============================================================================
+# Target: pm_bank module testing
+# Uses Icarus Verilog (iverilog) and VVP simulator
+#=============================================================================
+
+# Tools
+IVERILOG = /opt/homebrew/bin/iverilog
+VVP = /opt/homebrew/bin/vvp
+
+# Directories
+SRC_DIR = ../src
+TEST_DIR = .
+
+# Source files
+RTL_SRC = $(SRC_DIR)/pm_bank.v
+TB_SRC = $(TEST_DIR)/tb_pm_bank.v
+
+# Output files
+VVP_OUT = tb_pm_bank.vvp
+VCD_OUT = tb_pm_bank.vcd
+
+# Verilog standard
+VERILOG_STD = -g2012
+
+#=============================================================================
+# Targets
+#=============================================================================
+
+.PHONY: all test wave clean help
+
+# Default target
+all: test
+
+# Compile and run test
+test: $(VVP_OUT)
+	@echo "Running PM Bank testbench..."
+	@$(VVP) $(VVP_OUT)
+
+# Compile testbench
+$(VVP_OUT): $(TB_SRC) $(RTL_SRC)
+	@echo "Compiling PM Bank testbench..."
+	$(IVERILOG) $(VERILOG_STD) -o $(VVP_OUT) $(TB_SRC) $(RTL_SRC)
+
+# View waveform (requires GTKWave)
+wave: $(VCD_OUT)
+	@echo "Opening waveform viewer..."
+	@if command -v gtkwave > /dev/null; then \
+		gtkwave $(VCD_OUT) & \
+	else \
+		echo "GTKWave not found. Please install it to view waveforms."; \
+	fi
+
+# Clean generated files
+clean:
+	@echo "Cleaning PM Bank test files..."
+	@rm -f $(VVP_OUT) $(VCD_OUT)
+
+# Help message
+help:
+	@echo "PM Bank Testbench Makefile"
+	@echo "============================"
+	@echo "Targets:"
+	@echo "  make test   - Compile and run testbench (default)"
+	@echo "  make wave   - Open waveform viewer (GTKWave)"
+	@echo "  make clean  - Remove generated files"
+	@echo "  make help   - Show this help message"
+	@echo ""
+	@echo "Generated files:"
+	@echo "  $(VVP_OUT) - Compiled simulation"
+	@echo "  $(VCD_OUT) - Waveform data"
