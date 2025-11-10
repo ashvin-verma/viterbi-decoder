@@ -5,7 +5,7 @@
 
 `default_nettype none
 
-module tt_um_example #(
+module tt_um_ashvin_viterbi #(
     parameter K = 5,
     parameter D_TB = 32,
     parameter G0_OCT = 023,

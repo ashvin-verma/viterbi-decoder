@@ -1,165 +1,99 @@
+`default_nettype none
+
 module traceback #(
-    parameter M = 6,          // Number of bits in state
-    parameter D = 40          // Traceback depth
-)(
-    input wire clk,
-    input wire rst,
-    
-    // Write pointer from survivor memory
-    input wire [$clog2(D)-1:0] wr_ptr,
-    
-    // End state inputs
-    input wire [M-1:0] s_end,
-    input wire force_state0,
-    
-    // Survivor read interface
-    output reg [$clog2(D)-1:0] tb_time,
-    output reg [M-1:0] tb_state,
-    input wire tb_surv_bit,
-    
-    // Decoded output stream
-    output reg dec_bit_valid,
-    output reg dec_bit
+    parameter int M         = 6,
+    parameter int D         = 40,
+    parameter int TIME_W    = (D > 1) ? $clog2(D) : 1,
+    parameter int COUNT_W   = (D > 1) ? $clog2(D + 1) : 1
+) (
+    input  wire                 clk,
+    input  wire                 rst,
+
+    input  wire [TIME_W-1:0]    wr_ptr,
+    input  wire [M-1:0]         s_end,
+    input  wire                 force_state0,
+
+    output reg  [TIME_W-1:0]    tb_time,
+    output reg  [M-1:0]         tb_state,
+    input  wire                 tb_surv_bit,
+
+    output reg                  dec_bit_valid,
+    output reg                  dec_bit
 );
-// Traceback counter and state tracking
-always @(posedge clk) begin
-    if (rst) begin
-        tb_count <= 0;
-        current_state <= 0;
-        tb_time <= 0;
-        tb_state <= 0;
-        dec_bit_valid <= 0;
-        dec_bit <= 0;
-    end else begin
-        case (state)
-            IDLE: begin
-                tb_count <= 0;
-                dec_bit_valid <= 0;
-                if (force_state0) begin
-                    // Initialize traceback from end state
-                    current_state <= s_end;
-                    tb_time <= wr_ptr;
-                    tb_state <= s_end;
-                end
-            end
-            
-            TRACEBACK: begin
-                // Read survivor bit at current (time, state)
-                tb_time <= (tb_time == 0) ? (D-1) : (tb_time - 1);
-                tb_state <= current_state;
-                
-                // Update state based on survivor bit from previous cycle
-                if (tb_count > 0) begin
-                    // Shift current_state right by 1 and insert survivor bit at MSB
-                    current_state <= {tb_surv_bit, current_state[M-1:1]};
-                end
-                
-                tb_count <= tb_count + 1;
-            end
-            
-            DECODE: begin
-                // Output the decoded bit (survivor bit from last traceback step)
-                dec_bit <= tb_surv_bit;
-                dec_bit_valid <= 1'b1;
-            end
-        endcase
-    end
-end
-    // Internal state machine
-    localparam IDLE      = 2'b00;
-    localparam TRACEBACK = 2'b01;
-    localparam DECODE    = 2'b10;
-    
-    reg [1:0] state, next_state;
-    
-    // Traceback counter
-    reg [$clog2(D)-1:0] tb_count;
-    
-    // Current state being traced
-    reg [M-1:0] current_state;
-    
-    // State machine
-    // Traceback counter and state tracking
-    always @(posedge clk) begin
+
+    localparam logic [TIME_W-1:0] LAST_TIME   = (D > 0) ? TIME_W'(D - 1) : {TIME_W{1'b0}};
+    localparam logic [COUNT_W-1:0] TRACE_LIMIT = (D > 0) ? COUNT_W'(D - 1) : {COUNT_W{1'b0}};
+
+    typedef enum logic [1:0] {
+        TB_IDLE,
+        TB_TRACE,
+        TB_EMIT
+    } tb_state_t;
+
+    tb_state_t              tb_fsm;
+    logic [TIME_W-1:0]      wr_ptr_q;
+    logic [COUNT_W-1:0]     tb_count;
+    logic                   tb_surv_bit_d;
+    logic                   start_trace;
+    logic                   force_state0_q;
+    logic                   trace_request;
+
+    assign start_trace  = (wr_ptr_q != wr_ptr);
+    assign trace_request = start_trace || (force_state0 && !force_state0_q);
+
+    always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
-            state <= IDLE;
-            tb_count <= 0;
-            current_state <= 0;
-            tb_time <= 0;
-            tb_state <= 0;
-            dec_bit_valid <= 0;
-            dec_bit <= 0;
+            wr_ptr_q <= {TIME_W{1'b0}};
+            force_state0_q <= 1'b0;
         end else begin
-            case (state)
-                IDLE: begin
-                    tb_count <= 0;
-                    dec_bit_valid <= 0;
-                    if (force_state0) begin
-                        state <= TRACEBACK;
-                        // Initialize traceback from end state
-                        current_state <= s_end;
-                        tb_time <= wr_ptr;
-                        tb_state <= s_end;
+            wr_ptr_q <= wr_ptr;
+            force_state0_q <= force_state0;
+        end
+    end
+
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            tb_fsm         <= TB_IDLE;
+            tb_time        <= {TIME_W{1'b0}};
+            tb_state       <= {M{1'b0}};
+            tb_count       <= {COUNT_W{1'b0}};
+            dec_bit_valid  <= 1'b0;
+            dec_bit        <= 1'b0;
+            tb_surv_bit_d  <= 1'b0;
+        end else begin
+            dec_bit_valid <= 1'b0;
+            tb_surv_bit_d <= tb_surv_bit;
+            case (tb_fsm)
+                TB_IDLE: begin
+                    tb_count <= {COUNT_W{1'b0}};
+                    if (trace_request) begin
+                        tb_fsm   <= TB_TRACE;
+                        tb_time  <= wr_ptr;
+                        tb_state <= force_state0 ? {M{1'b0}} : s_end;
                     end
                 end
-                
-                TRACEBACK: begin
-                    // Read survivor bit at current (time, state)
-                    tb_time <= (tb_time == 0) ? (D-1) : (tb_time - 1);
-                    tb_state <= current_state;
-                    
-                    // Update state based on survivor bit from previous cycle
-                    if (tb_count > 0) begin
-                        // Shift current_state right by 1 and insert survivor bit at MSB
-                        current_state <= {tb_surv_bit, current_state[M-1:1]};
+                TB_TRACE: begin
+                    tb_time <= (tb_time == {TIME_W{1'b0}}) ? LAST_TIME : (tb_time - 1'b1);
+                    if (M == 1) begin
+                        tb_state <= {tb_surv_bit_d};
+                    end else begin
+                        tb_state <= {tb_surv_bit_d, tb_state[M-1:1]};
                     end
-                    
-                    tb_count <= tb_count + 1;
-                    
-                    if (tb_count == D-1) begin
-                        state <= DECODE;
+                    tb_count <= tb_count + 1'b1;
+                    if (tb_count == TRACE_LIMIT) begin
+                        tb_fsm <= TB_EMIT;
                     end
                 end
-                
-                DECODE: begin
-                    // Output the decoded bit (survivor bit from last traceback step)
-                    dec_bit <= tb_surv_bit;
+                TB_EMIT: begin
+                    dec_bit       <= tb_surv_bit_d;
                     dec_bit_valid <= 1'b1;
-                    
-                    if (dec_bit_valid) begin
-                        state <= IDLE;
-                    end
+                    tb_fsm        <= TB_IDLE;
                 end
-                
-                default: begin
-                    state <= IDLE;
-                end
+                default: tb_fsm <= TB_IDLE;
             endcase
         end
     end
-        
-    // Next state logic
-    always @(*) begin
-        case (state)
-            IDLE: begin
-                if (force_state0) begin
-                    next_state = TRACEBACK;
-                end
-            end
-            TRACEBACK: begin
-                if (tb_count == D-1) begin
-                    next_state = DECODE;
-                end
-            end
-            DECODE: begin
-                if (dec_bit_valid) begin
-                    next_state = IDLE;
-                end
-            end
-            default: begin
-                next_state = IDLE;
-            end
-        endcase
-    end
 
 endmodule
+
+`default_nettype wire
