@@ -1,0 +1,6 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1762757921" />
+    <testcase name="test_viterbi_core_smoke" classname="test" file="/home/ashvin/Documents/viterbi-decoder/test/test.py" lineno="24" time="0.00341796875" sim_time_ns="730.0" ratio_time="213577.14285714287" />
+  </testsuite>
+</testsuites>
