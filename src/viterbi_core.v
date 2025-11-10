@@ -1,6 +1,6 @@
 `default_nettype none
 
-module viterbi_core #(
+module tt_um_viterbi_core #(
     parameter int K       = 4,
     parameter int D       = 24,
     parameter int Wm      = 6,

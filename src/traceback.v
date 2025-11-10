@@ -125,11 +125,7 @@ end
                     // Output the decoded bit (survivor bit from last traceback step)
                     dec_bit <= tb_surv_bit;
                     dec_bit_valid <= 1'b1;
-                    
-                    if (dec_bit_valid) begin
-                        state <= IDLE;
-                        dec_bit_valid <= 1'b0;  // Clear valid signal
-                    end
+                    state <= IDLE;  // Transition back to IDLE unconditionally
                 end
                 
                 default: begin

@@ -42,7 +42,7 @@ module tb ();
     force_state0  = 1'b0;
   end
 
-  viterbi_core #(
+  tt_um_viterbi_core #(
       .K      (4),
       .D      (24),
       .Wm     (6),
