@@ -7,14 +7,7 @@ WAVES ?= 1
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
 PROJECT_SOURCES = project.v \
-	viterbi_core.v \
-	ham2.v \
-	expected_bits.v \
-	branch_metric.v \
-	acs_core.v \
-	pm_bank.v \
-	survivor_mem.v \
-	traceback.v
+	viterbi_universal.v
 
 ifneq ($(GATES),yes)
 
