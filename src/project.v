@@ -21,7 +21,7 @@ module tt_um_ashvin_viterbi (
     localparam K = 3;
     localparam M = K - 1;           // 2
     localparam S = 1 << M;          // 4 states
-    localparam MAX_FRAME = 64;
+    localparam MAX_FRAME = 32;  // Reduced for 1x1 tile area
     localparam [K-1:0] G0 = 3'b111;
     localparam [K-1:0] G1 = 3'b101;
 
@@ -47,30 +47,30 @@ module tt_um_ashvin_viterbi (
     localparam [2:0] S_IDLE = 0, S_RECEIVE = 1, S_ACS = 2, S_TRACE = 3, S_OUTPUT = 4;
     reg [2:0] state;
 
-    // Symbol buffer - packed as 2 bits per entry, 64 entries = 128 bits
-    reg [127:0] sym_buf;
-    reg [6:0] sym_count;
-    reg [6:0] frame_len;
+    // Symbol buffer - packed as 2 bits per entry, 32 entries = 64 bits
+    reg [63:0] sym_buf;
+    reg [5:0] sym_count;
+    reg [5:0] frame_len;
 
     // Path metrics - 4 states x 8 bits x 2 banks = 64 bits
     reg [7:0] pm0_0, pm1_0, pm2_0, pm3_0;  // Bank 0
     reg [7:0] pm0_1, pm1_1, pm2_1, pm3_1;  // Bank 1
     reg bank;
 
-    // Survivor memory - 64 time steps x 4 states = 256 bits
-    reg [255:0] surv;  // surv[t*4 + state]
+    // Survivor memory - 32 time steps x 4 states = 128 bits
+    reg [127:0] surv;  // surv[t*4 + state]
 
-    // Output buffer - 64 bits
-    reg [63:0] out_buf;
-    reg [6:0] out_idx;
-    reg [6:0] out_len;
+    // Output buffer - 32 bits
+    reg [31:0] out_buf;
+    reg [5:0] out_idx;
+    reg [5:0] out_len;
     reg frame_complete;
 
     // ACS state
-    reg [6:0] acs_t;
+    reg [5:0] acs_t;
 
     // Traceback state
-    reg [6:0] tb_t;
+    reg [5:0] tb_t;
     reg [1:0] tb_s;
 
     // Get symbol from buffer
