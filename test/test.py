@@ -6,112 +6,98 @@ from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
 
 
-def encode_k3(state, bit_in):
-    """Golden reference for K=3 encoder (G0=7, G1=5)"""
-    new_state = (bit_in << 2) | (state >> 1)
-    g0 = bin(new_state & 0b111).count('1') % 2
-    g1 = bin(new_state & 0b101).count('1') % 2
-    return (g0 << 1) | g1, (state & 0x3) >> 1 | (bit_in << 1)
-
-
-@cocotb.test()
-async def test_encoder_mode0_k3(dut):
-    """Test Mode 0: Small K=3 encoder"""
-    dut._log.info("Start K=3 encoder test (Mode 0)")
-
-    # Access the DUT instance within tb
-    encoder = dut.dut
-
-    clock = Clock(encoder.clk, 10, unit="ns")
-    cocotb.start_soon(clock.start())
-
-    # Reset
-    encoder.rst_n.value = 0
-    encoder.ui_in.value = 0
-    encoder.uio_in.value = 0
-    encoder.ena.value = 1
-
-    await ClockCycles(encoder.clk, 5)
-    encoder.rst_n.value = 1
-    await ClockCycles(encoder.clk, 2)
-
-    # Set mode to 0 (K=3 small encoder)
-    encoder.ui_in.value = 0b00_000000  # mode=00
-    await ClockCycles(encoder.clk, 1)
-
-    # Test encoding a sequence
-    test_bits = [1, 0, 1, 1, 0, 0, 1, 0]
+def encode_k3(bits):
+    """Encode bits with K=3, G0=7, G1=5 (LSB insertion)"""
     state = 0
-
-    for i, bit in enumerate(test_bits):
-        # Calculate expected output
-        expected_sym, state = encode_k3(state, bit)
-        
-        # Drive input
-        encoder.ui_in.value = 0b00_000001 | (bit << 1)  # mode=00, in_valid=1, in_bit
-        await RisingEdge(encoder.clk)
-        
-        # Check output (convert LogicArray to int before bitwise operations)
-        out_value = int(encoder.uo_out.value)
-        out_valid = out_value & 0x1
-        out_sym = (out_value >> 1) & 0x3
-        
-        if out_valid != 1:
-            raise AssertionError(f"Bit {i}: out_valid={out_valid}, expected 1")
-        if out_sym != expected_sym:
-            raise AssertionError(f"Bit {i}: out_sym={out_sym:02b}, expected {expected_sym:02b}")
-        
-        # Deassert in_valid
-        encoder.ui_in.value = 0b00_000000
-        await RisingEdge(encoder.clk)
-
-    dut._log.info("K=3 encoder test passed")
+    symbols = []
+    for bit in bits:
+        r = (state << 1) | bit
+        g0 = bin(r & 0b111).count('1') % 2
+        g1 = bin(r & 0b101).count('1') % 2
+        symbols.append((g0 << 1) | g1)
+        state = ((state << 1) | bit) & 0b11
+    return symbols
 
 
 @cocotb.test()
-async def test_encoder_mode2_uart(dut):
-    """Test Mode 2: UART encoder basic functionality"""
-    dut._log.info("Start UART encoder test (Mode 2)")
+async def test_viterbi_decoder(dut):
+    """Test Viterbi decoder K=3"""
+    dut._log.info("Start Viterbi decoder test")
 
     # Access the DUT instance within tb
-    encoder = dut.dut
+    decoder = dut.dut
 
-    clock = Clock(encoder.clk, 10, unit="ns")
+    clock = Clock(decoder.clk, 10, unit="ns")
     cocotb.start_soon(clock.start())
 
     # Reset
-    encoder.rst_n.value = 0
-    encoder.ui_in.value = 0
-    encoder.uio_in.value = 0
-    encoder.ena.value = 1
+    decoder.rst_n.value = 0
+    decoder.ui_in.value = 0
+    decoder.uio_in.value = 0
+    decoder.ena.value = 1
 
-    await ClockCycles(encoder.clk, 5)
-    encoder.rst_n.value = 1
-    await ClockCycles(encoder.clk, 2)
+    await ClockCycles(decoder.clk, 5)
+    decoder.rst_n.value = 1
+    await ClockCycles(decoder.clk, 2)
 
-    # Set mode to 2 (UART encoder)
-    encoder.ui_in.value = 0b10_000000  # mode=10
-    await ClockCycles(encoder.clk, 2)
+    # Test pattern
+    test_bits = [1, 0, 1, 1, 0, 1, 0, 0]  # 8 bits
+    symbols = encode_k3(test_bits)
 
-    # Send a byte
-    test_byte = 0xA5
-    encoder.uio_in.value = test_byte
-    encoder.ui_in.value = 0b10_000001  # mode=10, in_valid=1
-    await RisingEdge(encoder.clk)
-    
-    encoder.ui_in.value = 0b10_000000  # Deassert in_valid
-    await ClockCycles(encoder.clk, 2)
+    dut._log.info(f"Test bits: {test_bits}")
+    dut._log.info(f"Encoded symbols: {symbols}")
 
-    # Wait for output valid (with timeout)
-    timeout = 100
-    for _ in range(timeout):
-        out_value = int(encoder.uo_out.value)
-        if out_value & 0x1:  # out_valid
-            dut._log.info(f"Output received: 0x{out_value:02x}")
+    # Feed symbols to decoder
+    for i, sym in enumerate(symbols):
+        # Wait for rx_ready
+        for _ in range(100):
+            if int(decoder.uo_out.value) & 0x1:
+                break
+            await RisingEdge(decoder.clk)
+
+        # Send symbol: ui_in = {3'b0, read_ack, start, sym[1:0], valid}
+        decoder.ui_in.value = (sym << 1) | 0x1  # sym + valid
+        await RisingEdge(decoder.clk)
+        decoder.ui_in.value = 0
+        await RisingEdge(decoder.clk)
+
+    # Start decoding
+    decoder.ui_in.value = 0x08  # start=1
+    await RisingEdge(decoder.clk)
+    decoder.ui_in.value = 0
+    await RisingEdge(decoder.clk)
+
+    # Wait for busy to clear
+    for _ in range(500):
+        out_val = int(decoder.uo_out.value)
+        if not (out_val & 0x08):  # busy bit
             break
-        await RisingEdge(encoder.clk)
-    else:
-        raise AssertionError("No output received within timeout")
+        await RisingEdge(decoder.clk)
 
-    dut._log.info("UART encoder test passed")
+    # Read decoded bits
+    decoded = []
+    for i in range(len(test_bits)):
+        # Wait for out_valid
+        for _ in range(100):
+            out_val = int(decoder.uo_out.value)
+            if out_val & 0x02:  # out_valid
+                break
+            await RisingEdge(decoder.clk)
 
+        out_bit = (int(decoder.uo_out.value) >> 2) & 0x1
+        decoded.append(out_bit)
+
+        # Acknowledge
+        decoder.ui_in.value = 0x10  # read_ack
+        await RisingEdge(decoder.clk)
+        decoder.ui_in.value = 0
+        await RisingEdge(decoder.clk)
+
+    dut._log.info(f"Decoded bits: {decoded}")
+
+    # Check results
+    errors = sum(1 for a, b in zip(test_bits, decoded) if a != b)
+    if errors > 0:
+        raise AssertionError(f"Decode error: {errors} bits wrong")
+
+    dut._log.info("Viterbi decoder test passed!")
