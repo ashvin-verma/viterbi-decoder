@@ -21,7 +21,7 @@ module tt_um_ashvin_viterbi (
     localparam K = 3;
     localparam M = K - 1;           // 2
     localparam S = 1 << M;          // 4 states
-    localparam MAX_FRAME = 32;  // Reduced for 1x1 tile area
+    localparam MAX_FRAME = 32;  // For 2x2 tile area
     localparam [K-1:0] G0 = 3'b111;
     localparam [K-1:0] G1 = 3'b101;
 
