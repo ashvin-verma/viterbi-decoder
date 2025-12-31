@@ -16,7 +16,7 @@ SOURCES = \
 	$(SRC_DIR)/acs_core.v \
 	$(SRC_DIR)/pm_bank.v \
 	$(SRC_DIR)/survivor_mem.v \
-	$(SRC_DIR)/traceback_v2.v \
+	$(SRC_DIR)/traceback.v \
 	$(SRC_DIR)/viterbi_core.v
 
 TB = $(TEST_DIR)/tb_viterbi_levels.v

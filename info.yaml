@@ -1,9 +1,9 @@
 # Tiny Tapeout project information
 project:
-  title:        "Convolutional Encoder (Multi-Mode)"      # Project title
+  title:        "Viterbi Decoder (K=3)"      # Project title
   author:       "Ashvin Verma"      # Your name
   discord:      "ashverma"      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  "Rate 1/2 convolutional encoder with K=3, K=7, and UART interface modes"      # One line description of what your project does
+  description:  "Hardware Viterbi decoder for K=3 convolutional codes (G0=7, G1=5 octal)"      # One line description of what your project does
   language:     "Verilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
   clock_hz:     50000000       # Clock frequency in Hz (or 0 if not applicable)
 
@@ -18,43 +18,47 @@ project:
   # Don't forget to also update `PROJECT_SOURCES` in test/Makefile.
   source_files:
     - "project.v"
-    - "conv_encoder.v"
-    - "uart_conv_encoder.v"
-    - "bit_packer_8x.v"
-    - "sym_unpacker_4x.v"
+    - "viterbi_core.v"
+    - "ham2.v"
+    - "expected_bits.v"
+    - "branch_metric.v"
+    - "acs_core.v"
+    - "pm_bank.v"
+    - "survivor_mem.v"
+    - "traceback.v"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 # This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).
 pinout:
   # Inputs
-  ui[0]: "IN_VALID"
-  ui[1]: "IN_BIT / OUT_READY"
-  ui[2]: ""
-  ui[3]: ""
+  ui[0]: "RX_SYM_VALID"
+  ui[1]: "RX_SYM[0]"
+  ui[2]: "RX_SYM[1]"
+  ui[3]: "FORCE_STATE0"
   ui[4]: ""
   ui[5]: ""
-  ui[6]: "MODE[0]"
-  ui[7]: "MODE[1]"
+  ui[6]: ""
+  ui[7]: ""
 
   # Outputs
-  uo[0]: "OUT_VALID"
-  uo[1]: "OUT_SYM[0] / BYTE[0]"
-  uo[2]: "OUT_SYM[1] / BYTE[1]"
-  uo[3]: "IN_READY (UART)"
-  uo[4]: "BYTE[2] (UART)"
-  uo[5]: "BYTE[3] (UART)"
-  uo[6]: "BYTE[4] (UART)"
-  uo[7]: "BYTE[5] (UART)"
+  uo[0]: "DEC_BIT_VALID"
+  uo[1]: "DEC_BIT"
+  uo[2]: "RX_SYM_READY"
+  uo[3]: ""
+  uo[4]: ""
+  uo[5]: ""
+  uo[6]: ""
+  uo[7]: ""
 
-  # Bidirectional pins (inputs for UART mode)
-  uio[0]: "IN_BYTE[0]"
-  uio[1]: "IN_BYTE[1]"
-  uio[2]: "IN_BYTE[2]"
-  uio[3]: "IN_BYTE[3]"
-  uio[4]: "IN_BYTE[4]"
-  uio[5]: "IN_BYTE[5]"
-  uio[6]: "IN_BYTE[6]"
-  uio[7]: "IN_BYTE[7]"
+  # Bidirectional pins (unused)
+  uio[0]: ""
+  uio[1]: ""
+  uio[2]: ""
+  uio[3]: ""
+  uio[4]: ""
+  uio[5]: ""
+  uio[6]: ""
+  uio[7]: ""
 
 # Do not change!
 yaml_version: 6
