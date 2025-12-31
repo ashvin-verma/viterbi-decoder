@@ -67,7 +67,8 @@ module conv_encoder_1_2 #(
   // ------------------------------
   // State register (memory) and parity compute
   // state[M-1] = oldest; state[0] = newest *previous* bit
-  // reg_vec = {in_bit (newest), state}
+  // GOLDEN MODEL CONVENTION: reg_vec = {state, in_bit}
+  // Register bits: [K-1:1]=state, [0]=in_bit (LSB)
   // ------------------------------
   reg [M-1:0] state;
 
@@ -75,14 +76,14 @@ module conv_encoder_1_2 #(
   wire [K-1:0] reg_vec;
   wire c0, c1;
 
-  assign reg_vec = {in_bit, state};           // width K
+  assign reg_vec = {state, in_bit};           // width K - GOLDEN MODEL ORDER
   assign c0 = ^(reg_vec & G0_MASK);           // reduction XOR → parity
   assign c1 = ^(reg_vec & G1_MASK);
 
   // ------------------------------
   // Sequential update & output staging
   // out_valid mirrors in_valid (1-cycle timing alignment with outputs)
-  // Shift direction: next_state = {in_bit, state[M-1:1]}
+  // Shift direction: next_state = (state << 1) | in_bit - LSB INSERTION
   // ------------------------------
   always @(posedge clk) begin
     if (rst) begin
@@ -94,8 +95,9 @@ module conv_encoder_1_2 #(
       if (seed_load) begin
         state <= seed_value;
       end else if (in_valid) begin
-        // Update state AFTER computing parity for this in_bit
-        state <= {in_bit, state[M-1:1]};
+        // Update state: LSB insertion to match golden model
+        // next = (state << 1) | in_bit
+        state <= {state[M-2:0], in_bit};
       end
 
       // Emit symbol when input is valid

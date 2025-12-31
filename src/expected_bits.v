@@ -31,8 +31,9 @@ module expected_bits #(
   reg [K-1:0] reg_vec;
 
   always @ (*) begin
-    // Register: reg[0]=b (newest input), reg[M:1]=pred (state bits)
-    // Direct polynomial application: bit positions match tap positions
+    // GOLDEN MODEL CONVENTION: Register = {predecessor, input_bit}
+    // Register bits: [K-1:1]=pred, [0]=b (LSB)
+    // This matches C model: reg = (b & 1u) | (p << 1)
     reg_vec = {pred, b};
     // C model: c0 = parity(reg & g0), c1 = parity(reg & g1)
     // Returns: (c0 << 1) | c1, so expected[1]=c0, expected[0]=c1
