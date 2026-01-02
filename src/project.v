@@ -211,17 +211,17 @@ module tt_um_ashvin_viterbi (
             sym_buf <= 0;
             surv <= 0;
             out_buf <= 0;
-            pm0_0 <= 0; pm1_0 <= 8'hFF; pm2_0 <= 8'hFF; pm3_0 <= 8'hFF;
-            pm0_1 <= 8'hFF; pm1_1 <= 8'hFF; pm2_1 <= 8'hFF; pm3_1 <= 8'hFF;
+            pm0_0 <= 0; pm1_0 <= 8'd127; pm2_0 <= 8'd127; pm3_0 <= 8'd127;
+            pm0_1 <= 8'd127; pm1_1 <= 8'd127; pm2_1 <= 8'd127; pm3_1 <= 8'd127;
         end else begin
             case (state)
                 S_IDLE: begin
                     sym_count <= 0;
                     out_idx <= 0;
                     frame_complete <= 0;
-                    // Reset PMs
-                    pm0_0 <= 0; pm1_0 <= 8'hFF; pm2_0 <= 8'hFF; pm3_0 <= 8'hFF;
-                    pm0_1 <= 8'hFF; pm1_1 <= 8'hFF; pm2_1 <= 8'hFF; pm3_1 <= 8'hFF;
+                    // Reset PMs (127 = high enough to be invalid, low enough to avoid overflow)
+                    pm0_0 <= 0; pm1_0 <= 8'd127; pm2_0 <= 8'd127; pm3_0 <= 8'd127;
+                    pm0_1 <= 8'd127; pm1_1 <= 8'd127; pm2_1 <= 8'd127; pm3_1 <= 8'd127;
                     bank <= 0;
                     if (rx_valid) begin
                         sym_buf[1:0] <= rx_sym;
