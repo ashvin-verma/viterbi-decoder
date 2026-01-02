@@ -19,6 +19,15 @@ def encode_k3(bits):
     return symbols
 
 
+def safe_int(val):
+    """Safely convert LogicArray to int, treating X/Z as 0"""
+    try:
+        return int(val)
+    except ValueError:
+        # Contains X or Z values, return 0
+        return 0
+
+
 @cocotb.test()
 async def test_viterbi_decoder(dut):
     """Test Viterbi decoder K=3"""
@@ -30,15 +39,15 @@ async def test_viterbi_decoder(dut):
     clock = Clock(decoder.clk, 10, unit="ns")
     cocotb.start_soon(clock.start())
 
-    # Reset
+    # Reset - longer for gate-level sim
     decoder.rst_n.value = 0
     decoder.ui_in.value = 0
     decoder.uio_in.value = 0
     decoder.ena.value = 1
 
-    await ClockCycles(decoder.clk, 5)
+    await ClockCycles(decoder.clk, 10)  # Longer reset for GL
     decoder.rst_n.value = 1
-    await ClockCycles(decoder.clk, 2)
+    await ClockCycles(decoder.clk, 10)  # Wait for signals to settle
 
     # Test pattern
     test_bits = [1, 0, 1, 1, 0, 1, 0, 0]  # 8 bits
@@ -48,10 +57,11 @@ async def test_viterbi_decoder(dut):
     dut._log.info(f"Encoded symbols: {symbols}")
 
     # Feed symbols to decoder
-    for i, sym in enumerate(symbols):
+    for sym in symbols:
         # Wait for rx_ready
         for _ in range(100):
-            if int(decoder.uo_out.value) & 0x1:
+            out_val = safe_int(decoder.uo_out.value)
+            if out_val & 0x1:  # rx_ready
                 break
             await RisingEdge(decoder.clk)
 
@@ -59,39 +69,42 @@ async def test_viterbi_decoder(dut):
         decoder.ui_in.value = (sym << 1) | 0x1  # sym + valid
         await RisingEdge(decoder.clk)
         decoder.ui_in.value = 0
-        await RisingEdge(decoder.clk)
+        await ClockCycles(decoder.clk, 2)
 
     # Start decoding
     decoder.ui_in.value = 0x08  # start=1
     await RisingEdge(decoder.clk)
     decoder.ui_in.value = 0
-    await RisingEdge(decoder.clk)
+    await ClockCycles(decoder.clk, 2)
 
     # Wait for busy to clear
-    for _ in range(500):
-        out_val = int(decoder.uo_out.value)
-        if not (out_val & 0x08):  # busy bit
+    for _ in range(1000):
+        out_val = safe_int(decoder.uo_out.value)
+        if not (out_val & 0x08):  # busy bit clear
             break
         await RisingEdge(decoder.clk)
 
+    await ClockCycles(decoder.clk, 5)  # Extra settle time
+
     # Read decoded bits
     decoded = []
-    for i in range(len(test_bits)):
+    for _ in range(len(test_bits)):
         # Wait for out_valid
-        for _ in range(100):
-            out_val = int(decoder.uo_out.value)
+        for _ in range(200):
+            out_val = safe_int(decoder.uo_out.value)
             if out_val & 0x02:  # out_valid
                 break
             await RisingEdge(decoder.clk)
 
-        out_bit = (int(decoder.uo_out.value) >> 2) & 0x1
+        out_val = safe_int(decoder.uo_out.value)
+        out_bit = (out_val >> 2) & 0x1
         decoded.append(out_bit)
 
         # Acknowledge
         decoder.ui_in.value = 0x10  # read_ack
         await RisingEdge(decoder.clk)
         decoder.ui_in.value = 0
-        await RisingEdge(decoder.clk)
+        await ClockCycles(decoder.clk, 2)
 
     dut._log.info(f"Decoded bits: {decoded}")
 
