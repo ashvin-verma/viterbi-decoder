@@ -3,6 +3,7 @@
 
 // Comprehensive Testbench for tt_um_ashvin_viterbi (Viterbi decoder wrapper)
 // Tests multiple patterns matching C golden model (viterbi_golden.c)
+// When used with cocotb, define COCOTB to disable built-in tests
 module tb ();
 
   initial begin
@@ -166,6 +167,9 @@ module tb ();
     end
   endfunction
 
+  // Self-contained test sequence - disabled when COCOTB is defined
+  // Run with: iverilog -g2012 -o tb.vvp tb.v ../src/project.v && vvp tb.vvp
+`ifndef COCOTB
   initial begin
     $display("\n========================================================");
     $display("  Viterbi Decoder K=3 Comprehensive Testbench");
@@ -232,5 +236,6 @@ module tb ();
     $display("\nTIMEOUT!");
     $finish;
   end
+`endif
 
 endmodule
