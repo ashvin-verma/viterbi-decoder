@@ -114,10 +114,17 @@ async def run_decode_test(dut, test_bits, test_name):
     return decoded, errors
 
 
+import os
+GL_TEST = os.environ.get('GATES', 'no') == 'yes'
+# Longer timeouts for gate-level simulation with delays
+TIMEOUT_MULT = 50 if GL_TEST else 1
+RESET_CYCLES = 100 if GL_TEST else 20
+
+
 @cocotb.test()
 async def test_viterbi_decode_short(dut):
     """Test Viterbi decoder with a short 8-bit pattern"""
-    dut._log.info("=== Viterbi Decoder Functional Test (8-bit) ===")
+    dut._log.info(f"=== Viterbi Decoder Functional Test (8-bit) {'[GL]' if GL_TEST else ''} ===")
 
     # Use tb.v's clock - don't create a new clock driver
     clk = dut.clk  # Use top-level clock from tb.v
@@ -127,9 +134,9 @@ async def test_viterbi_decode_short(dut):
     dut.ui_in.value = 0
     dut.uio_in.value = 0
     dut.ena.value = 1
-    await ClockCycles(clk, 20)
+    await ClockCycles(clk, RESET_CYCLES)
     dut.rst_n.value = 1
-    await ClockCycles(clk, 20)
+    await ClockCycles(clk, RESET_CYCLES)
 
     # Test pattern: simple sequence
     test_bits = [1, 0, 1, 1, 0, 1, 0, 0]
@@ -142,14 +149,15 @@ async def test_viterbi_decode_short(dut):
     for i, sym in enumerate(symbols):
         # Wait for rx_ready (uo_out[0])
         timeout = 0
-        while timeout < 100:
+        max_timeout = 100 * TIMEOUT_MULT
+        while timeout < max_timeout:
             out_val = safe_int(dut.uo_out.value)
             if out_val & 0x1:
                 break
             await RisingEdge(clk)
             timeout += 1
 
-        if timeout >= 100:
+        if timeout >= max_timeout:
             raise AssertionError(f"Timeout waiting for rx_ready at symbol {i}")
 
         # Send symbol: ui_in = {3'b0, read_ack, start, sym[1:0], valid}
@@ -541,4 +549,168 @@ async def test_viterbi_32bit_prbs(dut):
     dut._log.info(f"Decoded {len(decoded)} bits, Errors: {errors}")
     if errors > 0:
         raise AssertionError(f"Decode failed: {errors} errors")
+    dut._log.info("=== TEST PASSED ===")
+
+
+def pack_symbols_to_byte(symbols):
+    """Pack 4 x 2-bit symbols into a byte.
+    symbols[0] -> bits [1:0], symbols[1] -> bits [3:2], etc.
+    """
+    if len(symbols) < 4:
+        symbols = symbols + [0] * (4 - len(symbols))
+    return (symbols[0] & 0x3) | ((symbols[1] & 0x3) << 2) | \
+           ((symbols[2] & 0x3) << 4) | ((symbols[3] & 0x3) << 6)
+
+
+async def run_uart_decode_test(dut, test_bits, test_name):
+    """Run decode test using UART byte mode.
+    Returns (decoded_bits, errors) tuple.
+    """
+    clk = dut.clk
+
+    # Reset
+    dut.rst_n.value = 0
+    dut.ui_in.value = 0
+    dut.uio_in.value = 0
+    dut.ena.value = 1
+    await ClockCycles(clk, 20)
+    dut.rst_n.value = 1
+    await ClockCycles(clk, 20)
+
+    # Enable UART mode: ui_in[5] = 1
+    uart_mode_bit = 0x20
+
+    symbols = encode_k3(test_bits)
+    dut._log.info(f"{test_name}: {len(test_bits)} bits -> {len(symbols)} symbols")
+
+    # Pack symbols into bytes (4 symbols per byte)
+    symbol_bytes = []
+    for i in range(0, len(symbols), 4):
+        chunk = symbols[i:i+4]
+        symbol_bytes.append(pack_symbols_to_byte(chunk))
+
+    dut._log.info(f"Symbol bytes: {[hex(b) for b in symbol_bytes]}")
+
+    # Feed symbol bytes via UART mode
+    for i, sym_byte in enumerate(symbol_bytes):
+        # Wait for byte_in_ready (uo_out[6])
+        timeout = 0
+        while timeout < 200:
+            if (safe_int(dut.uo_out.value) >> 6) & 0x1:
+                break
+            await RisingEdge(clk)
+            timeout += 1
+        if timeout >= 200:
+            raise AssertionError(f"Timeout waiting for byte_in_ready at byte {i}")
+
+        # Send byte: uio_in = data, ui_in[5]=uart_mode, ui_in[0]=valid
+        dut.uio_in.value = sym_byte
+        dut.ui_in.value = uart_mode_bit | 0x01  # uart_mode + byte_valid
+        await RisingEdge(clk)
+        dut.ui_in.value = uart_mode_bit  # Keep uart_mode, clear valid
+        await ClockCycles(clk, 5)  # Wait for unpacker to process
+
+    # Need to wait for all symbols from last byte to be consumed
+    await ClockCycles(clk, 20)
+
+    # Start decode: ui_in[3] = start (keep uart_mode set)
+    dut.ui_in.value = uart_mode_bit | 0x08
+    await RisingEdge(clk)
+    dut.ui_in.value = uart_mode_bit
+    await ClockCycles(clk, 5)
+
+    # Wait for busy to go low
+    timeout = 0
+    while timeout < 2000:
+        if not ((safe_int(dut.uo_out.value) >> 3) & 0x1):
+            break
+        await RisingEdge(clk)
+        timeout += 1
+
+    if timeout >= 2000:
+        raise AssertionError("Timeout waiting for decode to complete")
+
+    dut._log.info(f"Decode completed in {timeout} cycles")
+    await ClockCycles(clk, 10)
+
+    # Read output bytes via UART mode
+    # Each byte contains 8 decoded bits
+    decoded = []
+    num_output_bytes = (len(test_bits) + 7) // 8
+
+    for byte_idx in range(num_output_bytes):
+        # Wait for byte_out_valid (uo_out[5])
+        timeout = 0
+        while timeout < 500:
+            if (safe_int(dut.uo_out.value) >> 5) & 0x1:
+                break
+            await RisingEdge(clk)
+            timeout += 1
+
+        if timeout >= 500:
+            dut._log.warning(f"Timeout waiting for output byte {byte_idx}")
+            break
+
+        # Read output byte from uio_out
+        out_byte = safe_int(dut.uio_out.value)
+        dut._log.info(f"Output byte {byte_idx}: 0x{out_byte:02x} = {bin(out_byte)}")
+
+        # Unpack 8 bits (LSB first)
+        for bit_idx in range(8):
+            if len(decoded) < len(test_bits):
+                decoded.append((out_byte >> bit_idx) & 0x1)
+
+        # Acknowledge: ui_in[4] = read_ack
+        dut.ui_in.value = uart_mode_bit | 0x10
+        await RisingEdge(clk)
+        dut.ui_in.value = uart_mode_bit
+        await ClockCycles(clk, 5)
+
+    dut._log.info(f"Decoded {len(decoded)} bits: {decoded}")
+
+    # Count errors
+    errors = sum(1 for a, b in zip(test_bits, decoded) if a != b)
+    errors += abs(len(test_bits) - len(decoded))
+    return decoded, errors
+
+
+@cocotb.test()
+async def test_uart_mode_8bit(dut):
+    """Test UART byte mode with 8-bit pattern"""
+    dut._log.info("=== UART Mode Test (8-bit) ===")
+    test_bits = [1, 0, 1, 1, 0, 1, 0, 0]
+    decoded, errors = await run_uart_decode_test(dut, test_bits, "UART 8-bit")
+    dut._log.info(f"Input:   {test_bits}")
+    dut._log.info(f"Decoded: {decoded}")
+    dut._log.info(f"Errors:  {errors}/{len(test_bits)}")
+    if errors > 0:
+        raise AssertionError(f"UART decode failed: {errors} errors")
+    dut._log.info("=== TEST PASSED ===")
+
+
+@cocotb.test()
+async def test_uart_mode_16bit(dut):
+    """Test UART byte mode with 16-bit pattern"""
+    dut._log.info("=== UART Mode Test (16-bit) ===")
+    test_bits = [1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0]
+    decoded, errors = await run_uart_decode_test(dut, test_bits, "UART 16-bit")
+    dut._log.info(f"Input:   {test_bits}")
+    dut._log.info(f"Decoded: {decoded}")
+    dut._log.info(f"Errors:  {errors}/{len(test_bits)}")
+    if errors > 0:
+        raise AssertionError(f"UART decode failed: {errors} errors")
+    dut._log.info("=== TEST PASSED ===")
+
+
+@cocotb.test()
+async def test_uart_mode_32bit(dut):
+    """Test UART byte mode with 32-bit pattern (full frame)"""
+    dut._log.info("=== UART Mode Test (32-bit Full Frame) ===")
+    # Repeating pattern
+    base = [1, 0, 1, 1, 0, 1, 0, 0]
+    test_bits = base * 4
+    decoded, errors = await run_uart_decode_test(dut, test_bits, "UART 32-bit")
+    dut._log.info(f"Decoded {len(decoded)} bits, Errors: {errors}")
+    if errors > 0:
+        raise AssertionError(f"UART decode failed: {errors} errors")
     dut._log.info("=== TEST PASSED ===")

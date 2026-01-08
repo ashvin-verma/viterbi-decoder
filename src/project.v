@@ -2,6 +2,10 @@
  * Tiny Tapeout Viterbi Decoder
  * K=3, G0=7 (111), G1=5 (101) - Rate 1/2 convolutional code
  * Synthesis-friendly: no unpacked arrays
+ *
+ * Two operating modes:
+ * - Direct mode (uart_mode=0): symbol-by-symbol interface via ui_in
+ * - UART mode (uart_mode=1): byte interface via uio_in/uio_out
  */
 
 `default_nettype none
@@ -26,20 +30,47 @@ module tt_um_ashvin_viterbi (
     localparam [K-1:0] G1 = 3'b101;
 
     // Interface:
-    // ui_in[0]   = rx_valid (symbol input valid)
-    // ui_in[2:1] = rx_sym (2-bit received symbol)
+    // ui_in[0]   = rx_valid (symbol input valid in direct mode, byte valid in UART mode)
+    // ui_in[2:1] = rx_sym (2-bit received symbol, direct mode only)
     // ui_in[3]   = start (begin decoding)
-    // ui_in[4]   = read_ack (acknowledge output bit read)
+    // ui_in[4]   = read_ack (acknowledge output bit/byte read)
+    // ui_in[5]   = uart_mode (0=direct symbol mode, 1=UART byte mode)
     //
     // uo_out[0]  = rx_ready
     // uo_out[1]  = out_valid
-    // uo_out[2]  = out_bit
+    // uo_out[2]  = out_bit (direct mode)
     // uo_out[3]  = busy
     // uo_out[4]  = frame_done
+    // uo_out[5]  = byte_out_valid (UART mode)
+    // uo_out[6]  = byte_in_ready (UART mode)
+    //
+    // uio_in[7:0]  = input byte (UART mode: 4 symbols packed)
+    // uio_out[7:0] = output byte (UART mode: 8 decoded bits packed)
 
     wire rst = ~rst_n;
-    wire rx_valid = ui_in[0];
-    wire [1:0] rx_sym = ui_in[2:1];
+    wire uart_mode = ui_in[5];
+
+    // Symbol unpacker for UART mode
+    wire        unpacker_in_valid = uart_mode & ui_in[0];
+    wire        unpacker_in_ready;
+    wire        unpacker_sym_valid;
+    wire        unpacker_sym_ready;
+    wire [1:0]  unpacker_sym;
+
+    sym_unpacker_4x unpacker (
+        .clk(clk),
+        .rst(rst),
+        .in_valid(unpacker_in_valid),
+        .in_ready(unpacker_in_ready),
+        .in_byte(uio_in),
+        .rx_sym_valid(unpacker_sym_valid),
+        .rx_sym_ready(unpacker_sym_ready),
+        .rx_sym(unpacker_sym)
+    );
+
+    // Mux between direct symbols and unpacker output
+    wire rx_valid = uart_mode ? unpacker_sym_valid : ui_in[0];
+    wire [1:0] rx_sym = uart_mode ? unpacker_sym : ui_in[2:1];
     wire start_cmd = ui_in[3];
     wire read_ack = ui_in[4];
 
@@ -179,22 +210,56 @@ module tt_um_ashvin_viterbi (
     wire surv_bit = surv[tb_t * 4 + tb_s];
 
     // Status signals
-    wire rx_ready = (state == S_IDLE) || (state == S_RECEIVE);
+    wire core_rx_ready = (state == S_IDLE) || (state == S_RECEIVE);
     wire out_valid = (state == S_OUTPUT) && (out_idx < out_len);
-    wire out_bit = out_valid ? out_buf[out_idx] : 1'b0;
+    wire out_bit = out_valid ? out_buf[out_idx[4:0]] : 1'b0;
     wire busy = (state == S_ACS) || (state == S_TRACE);
+
+    // Connect unpacker to core ready signal
+    assign unpacker_sym_ready = core_rx_ready;
+
+    // Bit packer for UART mode output
+    // In UART mode, auto-advance bits to packer without external read_ack
+    // Use packer_ready to gate when we can send next bit
+    wire        packer_out_valid;
+    wire        packer_out_ready = read_ack;
+    wire [7:0]  packer_out_byte;
+
+    // packer_ready when packer's out_valid is low (can accept more bits)
+    wire packer_ready = ~packer_out_valid;
+
+    // In UART mode, send bit to packer when out_valid and packer can accept
+    // Use registered signal to create single-cycle pulse
+    reg uart_bit_sent;
+    wire uart_auto_advance = uart_mode & out_valid & packer_ready & ~uart_bit_sent;
+    wire packer_bit_valid = uart_auto_advance;
+
+    bit_packer_8x packer (
+        .clk(clk),
+        .rst(rst),
+        .dec_bit_valid(packer_bit_valid),
+        .dec_bit(out_bit),
+        .out_valid(packer_out_valid),
+        .out_ready(packer_out_ready),
+        .out_byte(packer_out_byte)
+    );
+
+    // Output muxing based on mode
+    wire rx_ready = uart_mode ? unpacker_in_ready : core_rx_ready;
 
     assign uo_out[0] = rx_ready;
     assign uo_out[1] = out_valid;
     assign uo_out[2] = out_bit;
     assign uo_out[3] = busy;
     assign uo_out[4] = frame_complete;
-    assign uo_out[7:5] = 3'b0;
+    assign uo_out[5] = packer_out_valid;     // UART mode: byte output valid
+    assign uo_out[6] = unpacker_in_ready;    // UART mode: byte input ready
+    assign uo_out[7] = 1'b0;
 
-    assign uio_out = 8'b0;
-    assign uio_oe = 8'b0;
+    assign uio_out = packer_out_byte;        // UART mode output byte
+    assign uio_oe = uart_mode ? 8'hFF : 8'h00;  // Enable outputs only in UART mode
 
-    wire _unused = &{ena, uio_in, 1'b0};
+    wire _unused = &{ena, 1'b0};
 
     always @(posedge clk) begin
         if (rst) begin
@@ -211,6 +276,7 @@ module tt_um_ashvin_viterbi (
             sym_buf <= 0;
             surv <= 0;
             out_buf <= 0;
+            uart_bit_sent <= 0;
             pm0_0 <= 0; pm1_0 <= 8'd127; pm2_0 <= 8'd127; pm3_0 <= 8'd127;
             pm0_1 <= 8'd127; pm1_1 <= 8'd127; pm2_1 <= 8'd127; pm3_1 <= 8'd127;
         end else begin
@@ -219,6 +285,7 @@ module tt_um_ashvin_viterbi (
                     sym_count <= 0;
                     out_idx <= 0;
                     frame_complete <= 0;
+                    uart_bit_sent <= 0;
                     // Reset PMs (127 = high enough to be invalid, low enough to avoid overflow)
                     pm0_0 <= 0; pm1_0 <= 8'd127; pm2_0 <= 8'd127; pm3_0 <= 8'd127;
                     pm0_1 <= 8'd127; pm1_1 <= 8'd127; pm2_1 <= 8'd127; pm3_1 <= 8'd127;
@@ -275,7 +342,7 @@ module tt_um_ashvin_viterbi (
 
                 S_TRACE: begin
                     // Decoded bit is LSB of current state
-                    out_buf[tb_t] <= tb_s[0];
+                    out_buf[tb_t[4:0]] <= tb_s[0];
 
                     // Compute previous state
                     if (surv_bit)
@@ -292,9 +359,24 @@ module tt_um_ashvin_viterbi (
                 end
 
                 S_OUTPUT: begin
-                    if (read_ack && out_idx < out_len) begin
-                        out_idx <= out_idx + 1;
+                    // In UART mode: auto-advance to packer, track with uart_bit_sent
+                    // In direct mode: wait for read_ack from external
+                    if (uart_mode) begin
+                        if (uart_auto_advance) begin
+                            // Just sent a bit to packer
+                            uart_bit_sent <= 1;
+                        end else if (uart_bit_sent && out_idx < out_len) begin
+                            // Advance to next bit
+                            out_idx <= out_idx + 1;
+                            uart_bit_sent <= 0;
+                        end
+                    end else begin
+                        // Direct mode: advance on read_ack
+                        if (read_ack && out_idx < out_len) begin
+                            out_idx <= out_idx + 1;
+                        end
                     end
+
                     if (out_idx >= out_len) begin
                         frame_complete <= 1;
                     end
