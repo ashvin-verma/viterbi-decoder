@@ -31,17 +31,19 @@ def safe_int(val):
 async def run_decode_test(dut, test_bits, test_name):
     """Helper function to run a complete decode test sequence.
     Returns (decoded_bits, errors) tuple.
+
+    Note: Access tb's signals directly (dut.ui_in, dut.rst_n, etc.)
+    not through dut.dut which is the internal tt_um_ashvin_viterbi instance.
     """
-    decoder = dut.dut
     clk = dut.clk
 
-    # Reset
-    decoder.rst_n.value = 0
-    decoder.ui_in.value = 0
-    decoder.uio_in.value = 0
-    decoder.ena.value = 1
+    # Reset - drive tb's signals directly
+    dut.rst_n.value = 0
+    dut.ui_in.value = 0
+    dut.uio_in.value = 0
+    dut.ena.value = 1
     await ClockCycles(clk, 20)
-    decoder.rst_n.value = 1
+    dut.rst_n.value = 1
     await ClockCycles(clk, 20)
 
     symbols = encode_k3(test_bits)
@@ -51,28 +53,28 @@ async def run_decode_test(dut, test_bits, test_name):
     for i, sym in enumerate(symbols):
         timeout = 0
         while timeout < 100:
-            if safe_int(decoder.uo_out.value) & 0x1:
+            if safe_int(dut.uo_out.value) & 0x1:
                 break
             await RisingEdge(clk)
             timeout += 1
         if timeout >= 100:
             raise AssertionError(f"Timeout waiting for rx_ready at symbol {i}")
 
-        decoder.ui_in.value = (sym << 1) | 0x1
+        dut.ui_in.value = (sym << 1) | 0x1
         await RisingEdge(clk)
-        decoder.ui_in.value = 0
+        dut.ui_in.value = 0
         await ClockCycles(clk, 3)
 
     # Start decode
-    decoder.ui_in.value = 0x08
+    dut.ui_in.value = 0x08
     await RisingEdge(clk)
-    decoder.ui_in.value = 0
+    dut.ui_in.value = 0
     await ClockCycles(clk, 5)
 
     # Wait for completion
     timeout = 0
     while timeout < 2000:
-        if not ((safe_int(decoder.uo_out.value) >> 3) & 0x1):
+        if not ((safe_int(dut.uo_out.value) >> 3) & 0x1):
             break
         await RisingEdge(clk)
         timeout += 1
@@ -87,7 +89,7 @@ async def run_decode_test(dut, test_bits, test_name):
     for i in range(len(test_bits)):
         timeout = 0
         while timeout < 100:
-            if (safe_int(decoder.uo_out.value) >> 1) & 0x1:
+            if (safe_int(dut.uo_out.value) >> 1) & 0x1:
                 break
             await RisingEdge(clk)
             timeout += 1
@@ -96,13 +98,19 @@ async def run_decode_test(dut, test_bits, test_name):
             dut._log.warning(f"Timeout at bit {i}, got {len(decoded)} bits")
             break
 
-        decoded.append((safe_int(decoder.uo_out.value) >> 2) & 0x1)
-        decoder.ui_in.value = 0x10
+        decoded.append((safe_int(dut.uo_out.value) >> 2) & 0x1)
+        dut.ui_in.value = 0x10
         await RisingEdge(clk)
-        decoder.ui_in.value = 0
+        dut.ui_in.value = 0
         await ClockCycles(clk, 3)
 
+    # Verify we got all expected bits
+    if len(decoded) < len(test_bits):
+        dut._log.warning(f"Only decoded {len(decoded)}/{len(test_bits)} bits")
+
     errors = sum(1 for a, b in zip(test_bits, decoded) if a != b)
+    # Add missing bits as errors
+    errors += abs(len(test_bits) - len(decoded))
     return decoded, errors
 
 
@@ -112,16 +120,15 @@ async def test_viterbi_decode_short(dut):
     dut._log.info("=== Viterbi Decoder Functional Test (8-bit) ===")
 
     # Use tb.v's clock - don't create a new clock driver
-    decoder = dut.dut
     clk = dut.clk  # Use top-level clock from tb.v
 
-    # Reset - long enough for gate-level
-    decoder.rst_n.value = 0
-    decoder.ui_in.value = 0
-    decoder.uio_in.value = 0
-    decoder.ena.value = 1
+    # Reset - drive tb's signals directly (not dut.dut)
+    dut.rst_n.value = 0
+    dut.ui_in.value = 0
+    dut.uio_in.value = 0
+    dut.ena.value = 1
     await ClockCycles(clk, 20)
-    decoder.rst_n.value = 1
+    dut.rst_n.value = 1
     await ClockCycles(clk, 20)
 
     # Test pattern: simple sequence
@@ -136,7 +143,7 @@ async def test_viterbi_decode_short(dut):
         # Wait for rx_ready (uo_out[0])
         timeout = 0
         while timeout < 100:
-            out_val = safe_int(decoder.uo_out.value)
+            out_val = safe_int(dut.uo_out.value)
             if out_val & 0x1:
                 break
             await RisingEdge(clk)
@@ -146,23 +153,23 @@ async def test_viterbi_decode_short(dut):
             raise AssertionError(f"Timeout waiting for rx_ready at symbol {i}")
 
         # Send symbol: ui_in = {3'b0, read_ack, start, sym[1:0], valid}
-        decoder.ui_in.value = (sym << 1) | 0x1
+        dut.ui_in.value = (sym << 1) | 0x1
         await RisingEdge(clk)
-        decoder.ui_in.value = 0
+        dut.ui_in.value = 0
         await ClockCycles(clk, 3)
 
     dut._log.info("All symbols sent, starting decode...")
 
     # Start decoding (ui_in[3] = start)
-    decoder.ui_in.value = 0x08
+    dut.ui_in.value = 0x08
     await RisingEdge(clk)
-    decoder.ui_in.value = 0
+    dut.ui_in.value = 0
     await ClockCycles(clk, 5)
 
     # Wait for busy (uo_out[3]) to go low
     timeout = 0
     while timeout < 500:
-        out_val = safe_int(decoder.uo_out.value)
+        out_val = safe_int(dut.uo_out.value)
         busy = (out_val >> 3) & 0x1
         if not busy:
             break
@@ -181,7 +188,7 @@ async def test_viterbi_decode_short(dut):
         # Wait for out_valid (uo_out[1])
         timeout = 0
         while timeout < 100:
-            out_val = safe_int(decoder.uo_out.value)
+            out_val = safe_int(dut.uo_out.value)
             out_valid = (out_val >> 1) & 0x1
             if out_valid:
                 break
@@ -193,20 +200,21 @@ async def test_viterbi_decode_short(dut):
             break
 
         # Read bit (uo_out[2])
-        out_val = safe_int(decoder.uo_out.value)
+        out_val = safe_int(dut.uo_out.value)
         out_bit = (out_val >> 2) & 0x1
         decoded.append(out_bit)
 
         # Acknowledge (ui_in[4] = read_ack)
-        decoder.ui_in.value = 0x10
+        dut.ui_in.value = 0x10
         await RisingEdge(clk)
-        decoder.ui_in.value = 0
+        dut.ui_in.value = 0
         await ClockCycles(clk, 3)
 
     dut._log.info(f"Decoded:     {decoded}")
 
-    # Verify
+    # Verify - count errors including missing bits
     errors = sum(1 for a, b in zip(test_bits, decoded) if a != b)
+    errors += abs(len(test_bits) - len(decoded))
     dut._log.info(f"Bit errors:  {errors}/{len(test_bits)}")
 
     if errors > 0:
@@ -220,16 +228,15 @@ async def test_viterbi_decode_16bit(dut):
     """Test Viterbi decoder with 16-bit pattern"""
     dut._log.info("=== Viterbi Decoder Functional Test (16-bit) ===")
 
-    decoder = dut.dut
     clk = dut.clk
 
-    # Reset
-    decoder.rst_n.value = 0
-    decoder.ui_in.value = 0
-    decoder.uio_in.value = 0
-    decoder.ena.value = 1
+    # Reset - drive tb's signals directly
+    dut.rst_n.value = 0
+    dut.ui_in.value = 0
+    dut.uio_in.value = 0
+    dut.ena.value = 1
     await ClockCycles(clk, 20)
-    decoder.rst_n.value = 1
+    dut.rst_n.value = 1
     await ClockCycles(clk, 20)
 
     # 16-bit test pattern: alternating with some runs
@@ -242,26 +249,29 @@ async def test_viterbi_decode_16bit(dut):
     for i, sym in enumerate(symbols):
         timeout = 0
         while timeout < 100:
-            if safe_int(decoder.uo_out.value) & 0x1:
+            if safe_int(dut.uo_out.value) & 0x1:
                 break
             await RisingEdge(clk)
             timeout += 1
 
-        decoder.ui_in.value = (sym << 1) | 0x1
+        if timeout >= 100:
+            raise AssertionError(f"Timeout waiting for rx_ready at symbol {i}")
+
+        dut.ui_in.value = (sym << 1) | 0x1
         await RisingEdge(clk)
-        decoder.ui_in.value = 0
+        dut.ui_in.value = 0
         await ClockCycles(clk, 3)
 
     # Start decode
-    decoder.ui_in.value = 0x08
+    dut.ui_in.value = 0x08
     await RisingEdge(clk)
-    decoder.ui_in.value = 0
+    dut.ui_in.value = 0
     await ClockCycles(clk, 5)
 
     # Wait for completion
     timeout = 0
     while timeout < 1000:
-        if not ((safe_int(decoder.uo_out.value) >> 3) & 0x1):
+        if not ((safe_int(dut.uo_out.value) >> 3) & 0x1):
             break
         await RisingEdge(clk)
         timeout += 1
@@ -274,23 +284,26 @@ async def test_viterbi_decode_16bit(dut):
     for i in range(len(test_bits)):
         timeout = 0
         while timeout < 100:
-            if (safe_int(decoder.uo_out.value) >> 1) & 0x1:
+            if (safe_int(dut.uo_out.value) >> 1) & 0x1:
                 break
             await RisingEdge(clk)
             timeout += 1
 
         if timeout >= 100:
+            dut._log.warning(f"Timeout at bit {i}")
             break
 
-        decoded.append((safe_int(decoder.uo_out.value) >> 2) & 0x1)
-        decoder.ui_in.value = 0x10
+        decoded.append((safe_int(dut.uo_out.value) >> 2) & 0x1)
+        dut.ui_in.value = 0x10
         await RisingEdge(clk)
-        decoder.ui_in.value = 0
+        dut.ui_in.value = 0
         await ClockCycles(clk, 3)
 
     dut._log.info(f"Decoded ({len(decoded)}): {decoded}")
 
+    # Count errors including missing bits
     errors = sum(1 for a, b in zip(test_bits, decoded) if a != b)
+    errors += abs(len(test_bits) - len(decoded))
     dut._log.info(f"Bit errors: {errors}/{len(test_bits)}")
 
     if errors > 0:
@@ -304,16 +317,15 @@ async def test_viterbi_all_zeros(dut):
     """Test with all-zero input (edge case)"""
     dut._log.info("=== Viterbi Decoder Test (All Zeros) ===")
 
-    decoder = dut.dut
     clk = dut.clk
 
-    # Reset
-    decoder.rst_n.value = 0
-    decoder.ui_in.value = 0
-    decoder.uio_in.value = 0
-    decoder.ena.value = 1
+    # Reset - drive tb's signals directly
+    dut.rst_n.value = 0
+    dut.ui_in.value = 0
+    dut.uio_in.value = 0
+    dut.ena.value = 1
     await ClockCycles(clk, 20)
-    decoder.rst_n.value = 1
+    dut.rst_n.value = 1
     await ClockCycles(clk, 20)
 
     # All zeros
@@ -323,22 +335,28 @@ async def test_viterbi_all_zeros(dut):
     dut._log.info(f"Input: {test_bits}, Symbols: {symbols}")
 
     # Feed symbols
-    for sym in symbols:
-        while not (safe_int(decoder.uo_out.value) & 0x1):
+    for i, sym in enumerate(symbols):
+        timeout = 0
+        while timeout < 100:
+            if safe_int(dut.uo_out.value) & 0x1:
+                break
             await RisingEdge(clk)
-        decoder.ui_in.value = (sym << 1) | 0x1
+            timeout += 1
+        if timeout >= 100:
+            raise AssertionError(f"Timeout at symbol {i}")
+        dut.ui_in.value = (sym << 1) | 0x1
         await RisingEdge(clk)
-        decoder.ui_in.value = 0
+        dut.ui_in.value = 0
         await ClockCycles(clk, 3)
 
     # Start decode
-    decoder.ui_in.value = 0x08
+    dut.ui_in.value = 0x08
     await RisingEdge(clk)
-    decoder.ui_in.value = 0
+    dut.ui_in.value = 0
 
     # Wait for completion
     for _ in range(500):
-        if not ((safe_int(decoder.uo_out.value) >> 3) & 0x1):
+        if not ((safe_int(dut.uo_out.value) >> 3) & 0x1):
             break
         await RisingEdge(clk)
 
@@ -346,20 +364,26 @@ async def test_viterbi_all_zeros(dut):
 
     # Read output
     decoded = []
-    for _ in range(len(test_bits)):
-        for _ in range(100):
-            if (safe_int(decoder.uo_out.value) >> 1) & 0x1:
+    for i in range(len(test_bits)):
+        timeout = 0
+        while timeout < 100:
+            if (safe_int(dut.uo_out.value) >> 1) & 0x1:
                 break
             await RisingEdge(clk)
-        decoded.append((safe_int(decoder.uo_out.value) >> 2) & 0x1)
-        decoder.ui_in.value = 0x10
+            timeout += 1
+        if timeout >= 100:
+            dut._log.warning(f"Timeout at bit {i}")
+            break
+        decoded.append((safe_int(dut.uo_out.value) >> 2) & 0x1)
+        dut.ui_in.value = 0x10
         await RisingEdge(clk)
-        decoder.ui_in.value = 0
+        dut.ui_in.value = 0
         await ClockCycles(clk, 3)
 
     dut._log.info(f"Decoded: {decoded}")
 
     errors = sum(1 for a, b in zip(test_bits, decoded) if a != b)
+    errors += abs(len(test_bits) - len(decoded))
     if errors > 0:
         raise AssertionError(f"Decode failed: {errors} errors")
 
