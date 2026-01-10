@@ -7,7 +7,7 @@ import os
 
 # Check for gate-level simulation
 GL_TEST = os.environ.get('GATES', 'no') == 'yes'
-TIMEOUT_MULT = 20 if GL_TEST else 1  # K=5 with 16 states
+TIMEOUT_MULT = 100 if GL_TEST else 1  # GL needs much longer timeouts
 
 
 def encode_k5(bits):
