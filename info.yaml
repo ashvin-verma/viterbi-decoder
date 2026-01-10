@@ -1,9 +1,9 @@
 # Tiny Tapeout project information
 project:
-  title:        "Viterbi Decoder (K=3)"      # Project title
+  title:        "Viterbi Decoder (K=5)"      # Project title
   author:       "Ashvin Verma"      # Your name
   discord:      "ashverma"      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  "Hardware Viterbi decoder for K=3 convolutional codes (G0=7, G1=5 octal)"      # One line description of what your project does
+  description:  "Hardware Viterbi decoder for K=5 convolutional code (23, 35 octal) - 16 states, rate 1/2, 2x2 tiles, 70% util"      # One line description of what your project does
   language:     "Verilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
   clock_hz:     50000000       # Clock frequency in Hz (or 0 if not applicable)
 
@@ -18,33 +18,31 @@ project:
   # Don't forget to also update `PROJECT_SOURCES` in test/Makefile.
   source_files:
     - "project.v"
-    - "sym_unpacker_4x.v"
-    - "bit_packer_8x.v"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 # This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).
 pinout:
   # Inputs
-  ui[0]: "RX_VALID / BYTE_VALID"
-  ui[1]: "RX_SYM[0]"
-  ui[2]: "RX_SYM[1]"
+  ui[0]: "BYTE_VALID"
+  ui[1]: ""
+  ui[2]: ""
   ui[3]: "START"
   ui[4]: "READ_ACK"
-  ui[5]: "UART_MODE"
+  ui[5]: ""
   ui[6]: ""
   ui[7]: ""
 
   # Outputs
-  uo[0]: "RX_READY"
-  uo[1]: "OUT_VALID"
-  uo[2]: "OUT_BIT"
+  uo[0]: "BYTE_IN_READY"
+  uo[1]: "BYTE_OUT_VALID"
+  uo[2]: ""
   uo[3]: "BUSY"
   uo[4]: "DONE"
-  uo[5]: "BYTE_OUT_VALID"
-  uo[6]: "BYTE_IN_READY"
+  uo[5]: ""
+  uo[6]: ""
   uo[7]: ""
 
-  # Bidirectional pins (UART mode: input/output bytes)
+  # Bidirectional pins (UART byte interface)
   uio[0]: "DATA[0]"
   uio[1]: "DATA[1]"
   uio[2]: "DATA[2]"

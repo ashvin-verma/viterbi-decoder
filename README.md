@@ -1,36 +1,117 @@
 ![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
 
-# Multi-Mode Convolutional Encoder - Tiny Tapeout Project
+# Parameterized Viterbi Decoder - Tiny Tapeout Project
 
 - [Read the documentation for project](docs/info.md)
 
 ## Overview
 
-This project implements a multi-mode rate 1/2 convolutional encoder with three operating modes:
-- **Mode 00**: K=3 encoder (low complexity, generators 7,5 octal)
-- **Mode 01**: K=7 encoder (NASA standard, generators 171,133 octal)  
-- **Mode 10**: UART byte interface (K=3 with packing/unpacking)
+This project implements a **parameterized Viterbi decoder** for rate 1/2 convolutional codes. The decoder uses the Viterbi algorithm to perform maximum-likelihood sequence estimation, providing forward error correction for noisy communication channels.
 
-Convolutional encoding adds redundancy for forward error correction, commonly used in satellite communications, deep space missions, and wireless systems.
+**Current configuration**: K=5, generators 23/35 (octal) - provides good error correction with reasonable area. Alternative K=7 (NASA standard) available on separate branch.
 
-## Features
+## Key Design Decisions
 
-- Parameterizable constraint length (K=3 to K=9 tested)
-- NASA standard generator polynomials
-- Three selectable modes via mode pins
-- Streaming valid/ready handshaking
-- UART byte-oriented interface option
-- Compact Verilog-2001 design
+### Single Decoder Configuration
+The chip contains **one decoder configuration at synthesis time**, determined by Verilog parameters. To use a different configuration (e.g., K=3 instead of K=7), modify the parameters in `src/project.v` and re-synthesize.
+
+### UART Byte Interface Only
+The decoder uses a **UART-style byte interface** exclusively. This simplifies integration with microcontrollers and FPGAs:
+- Input: 4 symbols packed per byte (8 bits = 4 × 2-bit symbols)
+- Output: 8 decoded bits per byte
+- Handshaking via ready/valid signals
+
+## Parameterization
+
+All core decoder parameters are configurable at synthesis time:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `K` | 5 | Constraint length (memory M = K-1) |
+| `G0` | 5'b10011 | Generator polynomial 0 (23 octal) |
+| `G1` | 5'b11101 | Generator polynomial 1 (35 octal) |
+| `MAX_FRAME` | 32 | Maximum frame length in symbols |
+
+### Supported Configurations
+
+The decoder has been tested with:
+- **K=3**: G0=7, G1=5 (octal) - minimal complexity, 4 states
+- **K=5**: G0=23, G1=35 (octal) - good error correction, 16 states (current build)
+- **K=7**: G0=171, G1=133 (octal) - NASA standard, 64 states (requires 6x2 tiles)
+
+Resource usage scales with 2^(K-1) states.
+
+## Implementation Results
+
+### K=5 (Current Build)
+
+| Metric | Value |
+|--------|-------|
+| Tile Size | 2x2 |
+| Die Area | 334.88 × 225.76 µm |
+| Core Area | 72,564 µm² |
+| Design Area | 49,851 µm² |
+| Utilization | 70.55% |
+| Clock Frequency | 50 MHz (target) |
+| States | 16 |
+
+### K=7 NASA Standard (Separate Branch)
+
+| Metric | Value |
+|--------|-------|
+| Tile Size | 6x2 |
+| Design Area | ~169,000 µm² |
+| States | 64 |
+
+*Note: K=7 requires 6x2 tiles due to 64 states requiring more survivor memory and path metric storage.*
 
 ## How to Use
 
-1. Select mode using `ui_in[7:6]`
-2. For direct modes (00/01): Send bits via `ui_in[0]` (valid) and `ui_in[1]` (bit data)
-3. For UART mode (10): Send bytes via `uio_in[7:0]` with `ui_in[0]` as valid
-4. Read encoded output from `uo_out[2:1]` (symbol) or `uo_out[7:1]` (UART bytes)
+1. **Load symbols**: Send encoded symbols via `uio_in[7:0]` with `ui_in[0]` (BYTE_VALID) high
+   - Pack 4 symbols per byte: `{sym3[1:0], sym2[1:0], sym1[1:0], sym0[1:0]}`
+   - Wait for `uo_out[0]` (BYTE_IN_READY) before sending each byte
+2. **Start decoding**: Assert `ui_in[3]` (START) after loading all symbols
+3. **Read output**: When `uo_out[1]` (BYTE_OUT_VALID) is high, read decoded byte from `uio_out[7:0]`
+   - Assert `ui_in[4]` (READ_ACK) to acknowledge each byte
+4. **Frame complete**: `uo_out[4]` (DONE) indicates decoding finished
 
-See [docs/info.md](docs/info.md) for detailed pin assignments and modes.
+See [docs/info.md](docs/info.md) for detailed pin assignments and timing diagrams.
 
+## Testing and Verification
+
+### C Golden Model
+
+A reference implementation in C (`c-tests/viterbi_golden.c`) provides:
+- Parameterized encoder (`conv_encode`) and decoder (`viterbi_decode`)
+- Compile-time configuration via `-DK=7 -DG0_OCT=0171 -DG1_OCT=0133`
+- Bit-exact match verification against RTL
+
+### Noise Channel Models
+
+The golden model includes several channel impairment models for testing decoder robustness:
+
+| Channel | Description |
+|---------|-------------|
+| Noiseless | Direct encoder output (baseline) |
+| BSC | Binary symmetric channel - i.i.d. bit flips |
+| Gilbert-Elliott | Bursty error channel with good/bad states |
+| AWGN | Additive white Gaussian noise (hard-quantized) |
+| ISI + AWGN | Two-tap intersymbol interference with noise |
+
+### Cocotb Testbench
+
+The RTL testbench (`test/test.py`) verifies:
+- Multiple bit patterns (8-bit, 16-bit, 32-bit frames)
+- Edge cases: all zeros, all ones, alternating patterns
+- UART byte interface protocol compliance
+- Gate-level simulation support (with `GATES=yes`)
+
+Run tests:
+```bash
+cd test
+make          # RTL simulation
+make GATES=yes  # Gate-level simulation (requires hardened netlist)
+```
 
 ## What is Tiny Tapeout?
 

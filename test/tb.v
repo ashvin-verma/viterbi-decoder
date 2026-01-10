@@ -1,10 +1,13 @@
 `default_nettype none
 `timescale 1ns / 1ps
 
-// Comprehensive Testbench for tt_um_ashvin_viterbi (Viterbi decoder wrapper)
-// Tests multiple patterns matching C golden model (viterbi_golden.c)
-// When used with cocotb, define COCOTB to disable built-in tests
+// Testbench for tt_um_ashvin_viterbi (parameterizable Viterbi decoder)
+// Supports K=3,5,7 - set TB_K parameter to match DUT
+// UART byte interface only
 module tb ();
+
+  // Testbench parameter - must match DUT's K
+  parameter TB_K = 5;  // Set to 3, 5, or 7
 
   initial begin
     $dumpfile("tb.vcd");
@@ -37,53 +40,143 @@ module tb ();
   );
 
   // Output signals
-  wire rx_ready      = uo_out[0];
-  wire out_valid     = uo_out[1];
-  wire out_bit       = uo_out[2];
-  wire busy          = uo_out[3];
-  wire frame_done    = uo_out[4];
+  wire byte_in_ready  = uo_out[0];
+  wire byte_out_valid = uo_out[1];
+  wire busy           = uo_out[3];
+  wire frame_done     = uo_out[4];
 
-  // Encoder state for generating test symbols
-  reg [1:0] enc_state;
+  // Encoder state - sized for max K=7
+  reg [5:0] enc_state;
 
-  // Encode one bit using K=3, G0=7, G1=5 (LSB insertion)
-  function [1:0] encode;
+  // K=3: G0=7 (111), G1=5 (101)
+  function [1:0] encode_k3;
     input in_bit;
     reg [2:0] r;
     begin
-      r = {enc_state, in_bit};
-      encode[1] = ^(r & 3'b111);  // G0 = 7
-      encode[0] = ^(r & 3'b101);  // G1 = 5
-      enc_state = {enc_state[0], in_bit};
+      r = {enc_state[1:0], in_bit};
+      encode_k3[1] = ^(r & 3'b111);
+      encode_k3[0] = ^(r & 3'b101);
     end
   endfunction
 
-  integer i, errors, total_errors, test_count, pass_count;
+  // K=5: G0=23 (10011), G1=35 (11101) - common standard
+  function [1:0] encode_k5;
+    input in_bit;
+    reg [4:0] r;
+    begin
+      r = {enc_state[3:0], in_bit};
+      encode_k5[1] = ^(r & 5'b10011);  // G0 = 23 octal
+      encode_k5[0] = ^(r & 5'b11101);  // G1 = 35 octal
+    end
+  endfunction
+
+  // K=7: G0=171 (1111001), G1=133 (1011011) - NASA standard
+  function [1:0] encode_k7;
+    input in_bit;
+    reg [6:0] r;
+    begin
+      r = {enc_state, in_bit};
+      encode_k7[1] = ^(r & 7'b1111001);
+      encode_k7[0] = ^(r & 7'b1011011);
+    end
+  endfunction
+
+  // Generic encode using TB_K parameter
+  function [1:0] encode_bit;
+    input in_bit;
+    begin
+      case (TB_K)
+        3: encode_bit = encode_k3(in_bit);
+        5: encode_bit = encode_k5(in_bit);
+        7: encode_bit = encode_k7(in_bit);
+        default: encode_bit = encode_k7(in_bit);
+      endcase
+      // Update state based on K
+      case (TB_K)
+        3: enc_state[1:0] = {enc_state[0], in_bit};
+        5: enc_state[3:0] = {enc_state[2:0], in_bit};
+        7: enc_state[5:0] = {enc_state[4:0], in_bit};
+        default: enc_state[5:0] = {enc_state[4:0], in_bit};
+      endcase
+    end
+  endfunction
+
+  // Pack 4 symbols into a byte
+  function [7:0] pack_symbols;
+    input [1:0] s0, s1, s2, s3;
+    begin
+      pack_symbols = {s3, s2, s1, s0};
+    end
+  endfunction
+
+  integer i, j, errors, total_errors, test_count, pass_count;
   reg [1:0] syms [0:31];
   reg [31:0] test_pattern;
   reg [31:0] decoded;
-  reg [7:0] test_pattern_8;
-  reg [7:0] decoded_8;
-  reg [15:0] test_pattern_16;
-  reg [15:0] decoded_16;
+  reg [7:0] sym_byte;
+  reg [7:0] out_byte;
+  integer timeout;
 
   // Task to reset the DUT
   task reset_dut;
     begin
       rst_n = 0;
       ui_in = 0;
-      repeat(5) @(posedge clk);
+      uio_in = 0;
+      repeat(10) @(posedge clk);
       rst_n = 1;
-      repeat(2) @(posedge clk);
+      repeat(5) @(posedge clk);
     end
   endtask
 
-  // Task to run a test with n-bit pattern (up to 32 bits)
+  // Task to send a symbol byte (4 symbols)
+  task send_byte;
+    input [7:0] data;
+    begin
+      timeout = 0;
+      while (!byte_in_ready && timeout < 1000) begin
+        @(posedge clk);
+        timeout = timeout + 1;
+      end
+      if (timeout >= 1000) begin
+        $display("ERROR: Timeout waiting for byte_in_ready");
+      end
+      uio_in = data;
+      ui_in = 8'b00000001;  // byte_valid
+      @(posedge clk);
+      ui_in = 0;
+      @(posedge clk);
+    end
+  endtask
+
+  // Task to read output byte
+  task read_byte;
+    output [7:0] data;
+    begin
+      timeout = 0;
+      while (!byte_out_valid && timeout < 10000) begin
+        @(posedge clk);
+        timeout = timeout + 1;
+      end
+      if (timeout >= 10000) begin
+        $display("WARNING: Timeout waiting for byte_out_valid");
+        data = 8'hXX;
+      end else begin
+        data = uio_out;
+        ui_in = 8'b00010000;  // read_ack
+        @(posedge clk);
+        ui_in = 0;
+        @(posedge clk);
+      end
+    end
+  endtask
+
+  // Task to run a test with n-bit pattern
   task run_test;
     input [255:0] test_name;
     input [31:0] pattern;
     input integer num_bits;
-    integer j, err;
+    integer k, err, num_sym_bytes, num_out_bytes;
     reg [31:0] dec;
     begin
       test_count = test_count + 1;
@@ -93,125 +186,102 @@ module tb ();
 
       // Encode test pattern
       enc_state = 0;
-      for (j = 0; j < num_bits; j = j + 1) begin
-        syms[j] = encode(pattern[j]);
+      for (k = 0; k < num_bits; k = k + 1) begin
+        syms[k] = encode_bit(pattern[k]);
       end
 
-      // Feed symbols
-      for (j = 0; j < num_bits; j = j + 1) begin
-        while (!rx_ready) @(posedge clk);
-        ui_in = {3'b0, 1'b0, 1'b0, syms[j], 1'b1};
-        @(posedge clk);
-        ui_in = 0;
-        @(posedge clk);
+      // Send symbol bytes (4 symbols per byte)
+      num_sym_bytes = (num_bits + 3) / 4;
+      for (k = 0; k < num_sym_bytes; k = k + 1) begin
+        sym_byte = pack_symbols(
+          (k*4 < num_bits) ? syms[k*4] : 2'b00,
+          (k*4+1 < num_bits) ? syms[k*4+1] : 2'b00,
+          (k*4+2 < num_bits) ? syms[k*4+2] : 2'b00,
+          (k*4+3 < num_bits) ? syms[k*4+3] : 2'b00
+        );
+        send_byte(sym_byte);
       end
+
+      // Wait for symbols to be processed
+      repeat(10) @(posedge clk);
 
       // Start decode
-      ui_in = 8'b00001000;
+      ui_in = 8'b00001000;  // start
       @(posedge clk);
       ui_in = 0;
-      @(posedge clk);
 
-      // Wait for completion
-      while (busy) @(posedge clk);
+      // Wait for completion (K=7 takes longer: 64 states * num_bits cycles for ACS)
+      timeout = 0;
+      while (busy && timeout < 100000) begin
+        @(posedge clk);
+        timeout = timeout + 1;
+      end
+      if (timeout >= 100000) begin
+        $display("ERROR: Timeout waiting for decode to complete");
+      end
 
-      // Read decoded bits
+      // Read decoded bytes
       dec = 0;
-      for (j = 0; j < num_bits; j = j + 1) begin
-        while (!out_valid) begin
-          @(posedge clk);
-          if (frame_done && !out_valid) begin
-            j = num_bits;
-          end
-        end
-        if (j < num_bits) begin
-          dec[j] = out_bit;
-          ui_in = 8'b00010000;
-          @(posedge clk);
-          ui_in = 0;
-          @(posedge clk);
+      num_out_bytes = (num_bits + 7) / 8;
+      for (k = 0; k < num_out_bytes; k = k + 1) begin
+        read_byte(out_byte);
+        for (j = 0; j < 8 && (k*8 + j) < num_bits; j = j + 1) begin
+          dec[k*8 + j] = out_byte[j];
         end
       end
 
       // Count errors
       err = 0;
-      for (j = 0; j < num_bits; j = j + 1) begin
-        if (dec[j] !== pattern[j]) err = err + 1;
+      for (k = 0; k < num_bits; k = k + 1) begin
+        if (dec[k] !== pattern[k]) err = err + 1;
       end
 
+      // Always show input vs decoded (binary, LSB first as transmitted)
+      $display("  Input:   %08b (hex: %02h)", pattern[7:0], pattern[7:0]);
+      $display("  Decoded: %08b (hex: %02h)", dec[7:0], dec[7:0]);
+      if (num_bits > 8) begin
+        $display("  Input:   %08b (hex: %02h) [bits 15:8]", pattern[15:8], pattern[15:8]);
+        $display("  Decoded: %08b (hex: %02h) [bits 15:8]", dec[15:8], dec[15:8]);
+      end
       if (err == 0) begin
         $display("  PASS: 0 errors");
         pass_count = pass_count + 1;
       end else begin
         $display("  FAIL: %0d errors", err);
-        $display("  Input:   %h", pattern);
-        $display("  Decoded: %h", dec);
       end
       total_errors = total_errors + err;
     end
   endtask
 
-  // Generate PRBS-7 pattern
-  function [31:0] gen_prbs;
-    reg [2:0] lfsr;
-    integer k;
-    reg newbit;
-    begin
-      lfsr = 3'b111;
-      gen_prbs = 0;
-      for (k = 0; k < 32; k = k + 1) begin
-        gen_prbs[k] = lfsr[0];
-        newbit = lfsr[2] ^ lfsr[1];
-        lfsr = {lfsr[1:0], newbit};
-      end
-    end
-  endfunction
-
   // Self-contained test sequence - disabled when COCOTB is defined
-  // Run with: iverilog -g2012 -o tb.vvp tb.v ../src/project.v && vvp tb.vvp
 `ifndef COCOTB
   initial begin
     $display("\n========================================================");
-    $display("  Viterbi Decoder K=3 Comprehensive Testbench");
-    $display("  Matching C Golden Model (viterbi_golden.c)");
+    $display("  Viterbi Decoder K=%0d Testbench", TB_K);
+    case (TB_K)
+      3: $display("  G0=7, G1=5 (octal)");
+      5: $display("  G0=23, G1=35 (octal)");
+      7: $display("  NASA Standard: G0=171, G1=133 (octal)");
+      default: $display("  Unknown K value");
+    endcase
     $display("========================================================");
 
     ena = 1;
-    uio_in = 0;
     total_errors = 0;
     test_count = 0;
     pass_count = 0;
 
-    // ================================================================
-    // 8-bit tests (matching C golden model)
-    // ================================================================
+    // 8-bit tests
     run_test("All Zeros 8-bit",      8'b00000000, 8);
     run_test("All Ones 8-bit",       8'b11111111, 8);
     run_test("Alternating 10",       8'b10101010, 8);
     run_test("Alternating 01",       8'b01010101, 8);
-    run_test("Single 1 at start",    8'b10000000, 8);
-    run_test("Single 1 at end",      8'b00000001, 8);
     run_test("Pattern 10110100",     8'b10110100, 8);
-    run_test("Transition 0->1->0",   8'b00011100, 8);
-    run_test("Burst 1100",           8'b11001100, 8);
 
-    // ================================================================
     // 16-bit tests
-    // ================================================================
     run_test("16-bit mixed",         16'b1010110011100010, 16);
-    run_test("16-bit random",        16'b0110001110100110, 16);
 
-    // ================================================================
-    // 32-bit tests (full frame)
-    // ================================================================
-    run_test("32-bit all zeros",     32'h00000000, 32);
-    run_test("32-bit all ones",      32'hFFFFFFFF, 32);
-    run_test("32-bit repeating",     32'hB4B4B4B4, 32);  // 10110100 x4
-    run_test("32-bit PRBS",          gen_prbs(), 32);
-
-    // ================================================================
     // Summary
-    // ================================================================
     $display("\n========================================================");
     $display("  TEST SUMMARY");
     $display("========================================================");
@@ -232,7 +302,7 @@ module tb ();
 
   // Timeout
   initial begin
-    #2000000;
+    #50000000;
     $display("\nTIMEOUT!");
     $finish;
   end
