@@ -8,7 +8,7 @@
 
 This project implements a **parameterized Viterbi decoder** for rate 1/2 convolutional codes. The decoder uses the Viterbi algorithm to perform maximum-likelihood sequence estimation, providing forward error correction for noisy communication channels.
 
-**Current configuration**: K=5, generators 23/35 (octal) - provides good error correction with reasonable area. Alternative K=7 (NASA standard) available on separate branch.
+**Current configuration**: K=7 NASA standard, generators 171/133 (octal) - maximum error correction capability. Alternative K=5 (smaller area) available on main branch.
 
 ## Key Design Decisions
 
@@ -27,23 +27,34 @@ All core decoder parameters are configurable at synthesis time:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `K` | 5 | Constraint length (memory M = K-1) |
-| `G0` | 5'b10011 | Generator polynomial 0 (23 octal) |
-| `G1` | 5'b11101 | Generator polynomial 1 (35 octal) |
+| `K` | 7 | Constraint length (memory M = K-1) |
+| `G0` | 7'b1111001 | Generator polynomial 0 (171 octal) |
+| `G1` | 7'b1011011 | Generator polynomial 1 (133 octal) |
 | `MAX_FRAME` | 32 | Maximum frame length in symbols |
 
 ### Supported Configurations
 
 The decoder has been tested with:
 - **K=3**: G0=7, G1=5 (octal) - minimal complexity, 4 states
-- **K=5**: G0=23, G1=35 (octal) - good error correction, 16 states (current build)
-- **K=7**: G0=171, G1=133 (octal) - NASA standard, 64 states (requires 6x2 tiles)
+- **K=5**: G0=23, G1=35 (octal) - good error correction, 16 states (main branch)
+- **K=7**: G0=171, G1=133 (octal) - NASA standard, 64 states (current build)
 
 Resource usage scales with 2^(K-1) states.
 
 ## Implementation Results
 
-### K=5 (Current Build)
+### K=7 NASA Standard (Current Build)
+
+| Metric | Value |
+|--------|-------|
+| Tile Size | 6x2 |
+| Design Area | ~169,000 µm² |
+| Clock Frequency | 50 MHz (target) |
+| States | 64 |
+
+*Note: K=7 requires 6x2 tiles due to 64 states requiring more survivor memory and path metric storage.*
+
+### K=5 (Main Branch)
 
 | Metric | Value |
 |--------|-------|
@@ -54,16 +65,6 @@ Resource usage scales with 2^(K-1) states.
 | Utilization | 70.55% |
 | Clock Frequency | 50 MHz (target) |
 | States | 16 |
-
-### K=7 NASA Standard (Separate Branch)
-
-| Metric | Value |
-|--------|-------|
-| Tile Size | 6x2 |
-| Design Area | ~169,000 µm² |
-| States | 64 |
-
-*Note: K=7 requires 6x2 tiles due to 64 states requiring more survivor memory and path metric storage.*
 
 ## How to Use
 

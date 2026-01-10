@@ -8,10 +8,10 @@
 `default_nettype none
 
 module tt_um_ashvin_viterbi #(
-    parameter K = 5,                    // Constraint length (K=5 for area efficiency)
-    parameter [K-1:0] G0 = 5'b10011,    // Generator polynomial 0 (23 octal)
-    parameter [K-1:0] G1 = 5'b11101,    // Generator polynomial 1 (35 octal)
-    parameter MAX_FRAME = 32            // Maximum frame length
+    parameter K = 7,                       // Constraint length (K=7 NASA standard)
+    parameter [K-1:0] G0 = 7'b1111001,     // Generator polynomial 0 (171 octal)
+    parameter [K-1:0] G1 = 7'b1011011,     // Generator polynomial 1 (133 octal)
+    parameter MAX_FRAME = 32               // Maximum frame length
 ) (
     input  wire [7:0] ui_in,
     output wire [7:0] uo_out,

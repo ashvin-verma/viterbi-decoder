@@ -7,23 +7,23 @@ import os
 
 # Check for gate-level simulation
 GL_TEST = os.environ.get('GATES', 'no') == 'yes'
-TIMEOUT_MULT = 20 if GL_TEST else 1  # K=5 with 16 states
+TIMEOUT_MULT = 100 if GL_TEST else 1  # K=7 with 64 states
 
 
-def encode_k5(bits):
-    """Encode bits with K=5, G0=23 (octal), G1=35 (octal)
-    Standard convolutional code, rate 1/2.
+def encode_k7(bits):
+    """Encode bits with K=7, G0=171 (octal), G1=133 (octal)
+    NASA standard convolutional code, rate 1/2.
     """
-    # G0 = 23 octal = 10011 binary
-    # G1 = 35 octal = 11101 binary
+    # G0 = 171 octal = 1111001 binary
+    # G1 = 133 octal = 1011011 binary
     state = 0
     symbols = []
     for bit in bits:
         r = (state << 1) | bit
-        g0 = bin(r & 0b10011).count('1') % 2  # G0 = 23 octal
-        g1 = bin(r & 0b11101).count('1') % 2  # G1 = 35 octal
+        g0 = bin(r & 0b1111001).count('1') % 2  # G0 = 171 octal
+        g1 = bin(r & 0b1011011).count('1') % 2  # G1 = 133 octal
         symbols.append((g0 << 1) | g1)
-        state = ((state << 1) | bit) & 0b1111  # Keep 4 bits (K-1)
+        state = ((state << 1) | bit) & 0b111111  # Keep 6 bits (K-1)
     return symbols
 
 
@@ -71,7 +71,7 @@ async def run_uart_decode_test(dut, test_bits, test_name):
     dut.rst_n.value = 1
     await ClockCycles(clk, 20)
 
-    symbols = encode_k5(test_bits)
+    symbols = encode_k7(test_bits)
     dut._log.info(f"{test_name}: {len(test_bits)} bits -> {len(symbols)} symbols")
 
     # Pack symbols into bytes (4 symbols per byte)
@@ -162,9 +162,9 @@ async def run_uart_decode_test(dut, test_bits, test_name):
 
 
 @cocotb.test()
-async def test_viterbi_k5_8bit(dut):
+async def test_viterbi_k7_8bit(dut):
     """Test K=7 Viterbi decoder with 8-bit pattern"""
-    dut._log.info(f"=== K=5 Viterbi Decoder Test (8-bit) {'[GL]' if GL_TEST else ''} ===")
+    dut._log.info(f"=== K=7 Viterbi Decoder Test (8-bit) {'[GL]' if GL_TEST else ''} ===")
     test_bits = [1, 0, 1, 1, 0, 1, 0, 0]
     decoded, errors = await run_uart_decode_test(dut, test_bits, "8-bit")
     dut._log.info(f"Input:   {test_bits}")
@@ -176,9 +176,9 @@ async def test_viterbi_k5_8bit(dut):
 
 
 @cocotb.test()
-async def test_viterbi_k5_all_zeros(dut):
+async def test_viterbi_k7_all_zeros(dut):
     """Test K=7 with all zeros"""
-    dut._log.info("=== K=5 Viterbi Decoder Test (All Zeros) ===")
+    dut._log.info("=== K=7 Viterbi Decoder Test (All Zeros) ===")
     test_bits = [0] * 8
     decoded, errors = await run_uart_decode_test(dut, test_bits, "All Zeros")
     dut._log.info(f"Errors: {errors}/{len(test_bits)}")
@@ -188,9 +188,9 @@ async def test_viterbi_k5_all_zeros(dut):
 
 
 @cocotb.test()
-async def test_viterbi_k5_all_ones(dut):
+async def test_viterbi_k7_all_ones(dut):
     """Test K=7 with all ones"""
-    dut._log.info("=== K=5 Viterbi Decoder Test (All Ones) ===")
+    dut._log.info("=== K=7 Viterbi Decoder Test (All Ones) ===")
     test_bits = [1] * 8
     decoded, errors = await run_uart_decode_test(dut, test_bits, "All Ones")
     dut._log.info(f"Errors: {errors}/{len(test_bits)}")
@@ -200,9 +200,9 @@ async def test_viterbi_k5_all_ones(dut):
 
 
 @cocotb.test()
-async def test_viterbi_k5_alternating(dut):
+async def test_viterbi_k7_alternating(dut):
     """Test K=7 with alternating pattern"""
-    dut._log.info("=== K=5 Viterbi Decoder Test (Alternating) ===")
+    dut._log.info("=== K=7 Viterbi Decoder Test (Alternating) ===")
     test_bits = [1, 0, 1, 0, 1, 0, 1, 0]
     decoded, errors = await run_uart_decode_test(dut, test_bits, "Alternating")
     dut._log.info(f"Errors: {errors}/{len(test_bits)}")
@@ -212,9 +212,9 @@ async def test_viterbi_k5_alternating(dut):
 
 
 @cocotb.test()
-async def test_viterbi_k5_16bit(dut):
+async def test_viterbi_k7_16bit(dut):
     """Test K=7 with 16-bit pattern"""
-    dut._log.info("=== K=5 Viterbi Decoder Test (16-bit) ===")
+    dut._log.info("=== K=7 Viterbi Decoder Test (16-bit) ===")
     test_bits = [1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0]
     decoded, errors = await run_uart_decode_test(dut, test_bits, "16-bit")
     dut._log.info(f"Errors: {errors}/{len(test_bits)}")
@@ -224,9 +224,9 @@ async def test_viterbi_k5_16bit(dut):
 
 
 @cocotb.test()
-async def test_viterbi_k5_32bit(dut):
+async def test_viterbi_k7_32bit(dut):
     """Test K=7 with 32-bit pattern (full frame)"""
-    dut._log.info("=== K=5 Viterbi Decoder Test (32-bit Full Frame) ===")
+    dut._log.info("=== K=7 Viterbi Decoder Test (32-bit Full Frame) ===")
     base = [1, 0, 1, 1, 0, 1, 0, 0]
     test_bits = base * 4
     decoded, errors = await run_uart_decode_test(dut, test_bits, "32-bit")

@@ -7,7 +7,7 @@
 module tb ();
 
   // Testbench parameter - must match DUT's K
-  parameter TB_K = 5;  // Set to 3, 5, or 7
+  parameter TB_K = 7;  // Set to 3, 5, or 7
 
   initial begin
     $dumpfile("tb.vcd");
