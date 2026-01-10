@@ -62,14 +62,14 @@ async def run_uart_decode_test(dut, test_bits, test_name):
     """
     clk = dut.clk
 
-    # Reset
+    # Reset - GL simulation needs more time for reset propagation
     dut.rst_n.value = 0
     dut.ui_in.value = 0
     dut.uio_in.value = 0
     dut.ena.value = 1
     await ClockCycles(clk, 20 * TIMEOUT_MULT)
     dut.rst_n.value = 1
-    await ClockCycles(clk, 20)
+    await ClockCycles(clk, 50 * TIMEOUT_MULT)  # Wait for state to settle
 
     symbols = encode_k5(test_bits)
     dut._log.info(f"{test_name}: {len(test_bits)} bits -> {len(symbols)} symbols")
