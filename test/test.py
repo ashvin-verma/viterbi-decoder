@@ -71,6 +71,10 @@ async def run_uart_decode_test(dut, test_bits, test_name):
     dut.rst_n.value = 1
     await ClockCycles(clk, 50 * TIMEOUT_MULT)  # Wait for state to settle
 
+    # Debug: check state after reset
+    if GL_TEST:
+        dut._log.info(f"After reset: uo_out=0x{safe_int(dut.uo_out.value):02x}, rst_n={safe_int(dut.rst_n.value)}")
+
     symbols = encode_k5(test_bits)
     dut._log.info(f"{test_name}: {len(test_bits)} bits -> {len(symbols)} symbols")
 
@@ -86,11 +90,15 @@ async def run_uart_decode_test(dut, test_bits, test_name):
         timeout = 0
         max_timeout = 200 * TIMEOUT_MULT
         while timeout < max_timeout:
-            if safe_int(dut.uo_out.value) & 0x1:
+            uo_val = safe_int(dut.uo_out.value)
+            if uo_val & 0x1:
                 break
+            if timeout % 100 == 0 and GL_TEST:
+                dut._log.info(f"Waiting for byte_in_ready: uo_out=0x{uo_val:02x}, cycle={timeout}")
             await RisingEdge(clk)
             timeout += 1
         if timeout >= max_timeout:
+            dut._log.error(f"uo_out final value: 0x{safe_int(dut.uo_out.value):02x}")
             raise AssertionError(f"Timeout waiting for byte_in_ready at byte {i}")
 
         # Send byte

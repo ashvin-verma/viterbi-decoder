@@ -23,12 +23,22 @@ module tb ();
   reg        clk;
   reg        rst_n;
 
+  // Power pins for gate-level simulation
+`ifdef GL_TEST
+  wire VPWR = 1'b1;
+  wire VGND = 1'b0;
+`endif
+
   initial begin
     clk = 0;
     forever #10 clk = ~clk;
   end
 
   tt_um_ashvin_viterbi dut (
+`ifdef GL_TEST
+      .VPWR(VPWR),
+      .VGND(VGND),
+`endif
       .ui_in(ui_in),
       .uo_out(uo_out),
       .uio_in(uio_in),
