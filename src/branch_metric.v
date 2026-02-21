@@ -1,7 +1,7 @@
 `default_nettype none
 
 module branch_metric #(
-    parameter int Wb = 2
+    parameter Wb = 2
 ) (
     input  wire [1:0] rx_sym,
     input  wire [1:0] exp_sym0,

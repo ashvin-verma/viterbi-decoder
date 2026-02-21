@@ -7,6 +7,7 @@ module survivor_mem #(
 ) (
     input wire clk,
     input wire rst,
+    input wire init_frame,
     input wire wr_en,
     input wire [S-1:0] surv_row,
 
@@ -19,20 +20,14 @@ module survivor_mem #(
 );
 
   reg [S-1:0] mem [0:D-1];
+  integer j;
 
   always @(posedge clk) begin
     if (rst) begin
       wr_ptr <= {$clog2(D){1'b0}};
-      mem[0] <= {S{1'b0}};
-      mem[1] <= {S{1'b0}};
-      mem[2] <= {S{1'b0}};
-      mem[3] <= {S{1'b0}};
-      mem[4] <= {S{1'b0}};
-      mem[5] <= {S{1'b0}};
-      mem[6] <= {S{1'b0}};
-      mem[7] <= {S{1'b0}};
-      mem[8] <= {S{1'b0}};
-      mem[9] <= {S{1'b0}};
+      for (j = 0; j < D; j = j + 1) mem[j] <= {S{1'b0}};
+    end else if (init_frame) begin
+      wr_ptr <= {$clog2(D){1'b0}};
     end else if (wr_en) begin
       mem[wr_ptr] <= surv_row;
       if (wr_ptr == D - 1)

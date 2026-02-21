@@ -1,6 +1,14 @@
 <testsuites name="results">
   <testsuite name="all" package="all">
-    <property name="random_seed" value="1762764016" />
-    <testcase name="test_viterbi_core_smoke" classname="test" file="/home/ashvin/Documents/viterbi-decoder/test/test.py" lineno="24" time="0.002869844436645508" sim_time_ns="730.0" ratio_time="254369.1883359641" />
+    <property name="random_seed" value="1771639164" />
+    <testcase name="test_viterbi_8bit" classname="test" file="/Users/ashvinverma/Documents/projects/viterbi-decoder/test/test.py" lineno="332" time="0.02052593231201172" sim_time_ns="23590.0" ratio_time="1149277.881336245" />
+    <testcase name="test_viterbi_all_zeros" classname="test" file="/Users/ashvinverma/Documents/projects/viterbi-decoder/test/test.py" lineno="346" time="0.01746201515197754" sim_time_ns="23599.999" ratio_time="1351504.8976078427" />
+    <testcase name="test_viterbi_all_ones" classname="test" file="/Users/ashvinverma/Documents/projects/viterbi-decoder/test/test.py" lineno="358" time="0.01765298843383789" sim_time_ns="23599.999000000003" ratio_time="1336884.0685785906" />
+    <testcase name="test_viterbi_alternating" classname="test" file="/Users/ashvinverma/Documents/projects/viterbi-decoder/test/test.py" lineno="370" time="0.01729893684387207" sim_time_ns="23599.998999999996" ratio_time="1364245.6304105185" />
+    <testcase name="test_viterbi_16bit" classname="test" file="/Users/ashvinverma/Documents/projects/viterbi-decoder/test/test.py" lineno="382" time="0.025882959365844727" sim_time_ns="34399.998999999996" ratio_time="1329059.7305265793" />
+    <testcase name="test_viterbi_max_frame" classname="test" file="/Users/ashvinverma/Documents/projects/viterbi-decoder/test/test.py" lineno="394" time="0.034037113189697266" sim_time_ns="45319.998999999996" ratio_time="1331487.7424363345" />
+    <testcase name="test_viterbi_golden_comparison" classname="test" file="/Users/ashvinverma/Documents/projects/viterbi-decoder/test/test.py" lineno="409" time="0.8481428623199463" sim_time_ns="616639.9990000001" ratio_time="727047.3246845341" />
+    <testcase name="test_viterbi_noise_resilience" classname="test" file="/Users/ashvinverma/Documents/projects/viterbi-decoder/test/test.py" lineno="443" time="0.05954599380493164" sim_time_ns="81599.99899999995" ratio_time="1370369.2521669155" />
+    <testcase name="test_viterbi_back_to_back" classname="test" file="/Users/ashvinverma/Documents/projects/viterbi-decoder/test/test.py" lineno="473" time="0.03341484069824219" sim_time_ns="46719.99899999995" ratio_time="1398181.1082659955" />
   </testsuite>
 </testsuites>

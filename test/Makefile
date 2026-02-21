@@ -6,7 +6,7 @@ SIM ?= icarus
 WAVES ?= 1
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = project.v
+PROJECT_SOURCES = project.v expected_bits.v ham2.v branch_metric.v acs_core.v pm_bank.v survivor_mem.v traceback.v
 
 ifneq ($(GATES),yes)
 
@@ -36,6 +36,12 @@ COMPILE_ARGS 		+= -I$(SRC_DIR)
 COMPILE_ARGS 		+= -g2012
 # Define COCOTB to disable tb.v's built-in test sequence
 COMPILE_ARGS 		+= -DCOCOTB
+
+# Support TB_K parameter for multi-K testing
+ifdef TB_K
+COMPILE_ARGS 		+= -DTB_K=$(TB_K)
+export TB_K
+endif
 
 # Include the testbench sources:
 VERILOG_SOURCES += $(PWD)/tb.v
