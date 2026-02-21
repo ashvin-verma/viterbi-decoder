@@ -43,11 +43,15 @@ module tb ();
     forever #10 clk = ~clk;
   end
 
-  tt_um_ashvin_viterbi #(
-      .K      (TB_K),
-      .G0_OCT (TB_G0),
-      .G1_OCT (TB_G1)
-  ) dut (
+  tt_um_ashvin_viterbi
+`ifndef GL_TEST
+      #(
+          .K      (TB_K),
+          .G0_OCT (TB_G0),
+          .G1_OCT (TB_G1)
+      )
+`endif
+      dut (
 `ifdef GL_TEST
       .VPWR(VPWR),
       .VGND(VGND),
