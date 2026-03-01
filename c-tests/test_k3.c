@@ -1,7 +1,7 @@
 #define K 3
-#define D_TB 6
-#define G0_OCT 05
-#define G1_OCT 07
+#define D_TB 8
+#define G0_OCT 07
+#define G1_OCT 05
 
 #include <stdint.h>
 #include <stdio.h>

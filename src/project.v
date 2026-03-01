@@ -6,10 +6,10 @@
 `default_nettype none
 
 module tt_um_ashvin_viterbi #(
-    parameter K = 3,
-    parameter D_TB = 8,
-    parameter G0_OCT = 07,
-    parameter G1_OCT = 05
+    parameter K = 5,
+    parameter D_TB = 24,
+    parameter G0_OCT = 'o23,
+    parameter G1_OCT = 'o35
 ) (
     input  wire [7:0] ui_in,    // Dedicated inputs
     output wire [7:0] uo_out,   // Dedicated outputs
@@ -42,7 +42,7 @@ module tt_um_ashvin_viterbi #(
     tt_um_viterbi_core #(
       .K(K),
       .D(D_TB),
-      .Wm(4),
+      .Wm(6),
       .G0_OCT(G0_OCT),
       .G1_OCT(G1_OCT)
     ) viterbi_core_inst (

@@ -1,6 +1,19 @@
 <testsuites name="results">
   <testsuite name="all" package="all">
-    <property name="random_seed" value="1762764016" />
-    <testcase name="test_viterbi_core_smoke" classname="test" file="/home/ashvin/Documents/viterbi-decoder/test/test.py" lineno="24" time="0.002869844436645508" sim_time_ns="730.0" ratio_time="254369.1883359641" />
+    <property name="random_seed" value="1772229094" />
+    <testcase name="test_viterbi_core_smoke" classname="test" file="/Users/ashvinverma/Documents/viterbi-decoder/test/test.py" lineno="196" time="0.009629964828491211" sim_time_ns="1390.0" ratio_time="144341.12945953305" />
+    <testcase name="test_encoder_vs_commpy" classname="test" file="/Users/ashvinverma/Documents/viterbi-decoder/test/test.py" lineno="237" time="0.00019669532775878906" sim_time_ns="0.0" ratio_time="0.0" />
+    <testcase name="test_all_zeros" classname="test" file="/Users/ashvinverma/Documents/viterbi-decoder/test/test.py" lineno="259" time="0.05319499969482422" sim_time_ns="15039.998" ratio_time="282733.3036240879" />
+    <testcase name="test_all_ones" classname="test" file="/Users/ashvinverma/Documents/viterbi-decoder/test/test.py" lineno="277" time="0.05419802665710449" sim_time_ns="15039.999" ratio_time="277500.8598588616" />
+    <testcase name="test_noiseless_roundtrip" classname="test" file="/Users/ashvinverma/Documents/viterbi-decoder/test/test.py" lineno="295" time="0.07912421226501465" sim_time_ns="22559.999" ratio_time="285121.3093210796" />
+    <testcase name="test_commpy_golden_comparison" classname="test" file="/Users/ashvinverma/Documents/viterbi-decoder/test/test.py" lineno="319" time="0.08544301986694336" sim_time_ns="22559.999000000003" ratio_time="264035.5998082897" />
+    <testcase name="test_single_error_correction" classname="test" file="/Users/ashvinverma/Documents/viterbi-decoder/test/test.py" lineno="361" time="0.08145570755004883" sim_time_ns="22559.998999999996" ratio_time="276960.3221006761" />
+    <testcase name="test_double_error_correction" classname="test" file="/Users/ashvinverma/Documents/viterbi-decoder/test/test.py" lineno="382" time="0.0779421329498291" sim_time_ns="22559.998999999996" ratio_time="289445.49175375706" />
+    <testcase name="test_triple_error_correction" classname="test" file="/Users/ashvinverma/Documents/viterbi-decoder/test/test.py" lineno="403" time="0.0817720890045166" sim_time_ns="22559.998999999996" ratio_time="275888.74485955614" />
+    <testcase name="test_error_beyond_capacity" classname="test" file="/Users/ashvinverma/Documents/viterbi-decoder/test/test.py" lineno="427" time="0.07912993431091309" sim_time_ns="22559.99900000001" ratio_time="285100.69162143464" />
+    <testcase name="test_multiple_frames" classname="test" file="/Users/ashvinverma/Documents/viterbi-decoder/test/test.py" lineno="466" time="0.1614689826965332" sim_time_ns="45119.99900000001" ratio_time="279434.46627640614" />
+    <testcase name="test_long_frame" classname="test" file="/Users/ashvinverma/Documents/viterbi-decoder/test/test.py" lineno="490" time="0.23929405212402344" sim_time_ns="67679.99900000001" ratio_time="282831.9316725943" />
+    <testcase name="test_wrong_polynomial_expected_failure" classname="test" file="/Users/ashvinverma/Documents/viterbi-decoder/test/test.py" lineno="510" time="0.07821011543273926" sim_time_ns="22559.99900000001" ratio_time="288453.7233473543" />
+    <testcase name="test_throughput" classname="test" file="/Users/ashvinverma/Documents/viterbi-decoder/test/test.py" lineno="555" time="0.03771018981933594" sim_time_ns="11329.99900000001" ratio_time="300449.2699262559" />
   </testsuite>
 </testsuites>

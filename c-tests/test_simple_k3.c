@@ -5,12 +5,12 @@
 
 #define K 3
 #define D_TB 6
-#define G0_OCT 0x07
-#define G1_OCT 0x05
+#define G0_OCT 07
+#define G1_OCT 05
 
 // From viterbi_golden.c
 extern int viterbi_decode(const uint8_t *rx_syms, int T, uint8_t *out_bits);
-extern void conv_encode(const uint8_t *in_bits, int N, uint8_t **syms_out, int *T_out, int force_tail);
+extern void conv_encode(const uint8_t *in_bits, int N, uint8_t *syms_out, int *T_out);
 
 int main() {
     // Test pattern: 1010110011111111000000
@@ -18,9 +18,9 @@ int main() {
     int N = 16; // Just use first 16 bits
     
     // Encode
-    uint8_t *syms = NULL;
+    uint8_t syms[100];
     int T;
-    conv_encode(test_bits, N, &syms, &T, 0); // free-running (force_tail=0)
+    conv_encode(test_bits, N, syms, &T);
     
     printf("Encoded %d bits into %d symbols\n", N, T);
     printf("Input bits:  ");
@@ -53,6 +53,5 @@ int main() {
     }
     printf("Errors: %d / %d\n", errors, compare_len);
     
-    free(syms);
     return 0;
 }

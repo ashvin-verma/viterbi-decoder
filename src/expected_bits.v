@@ -24,18 +24,17 @@ module expected_bits #(
     output reg [1:0] expected
 );
 
-  // Convention: bit 0 = newest input, higher bits = older state
-  // Generator polynomials can be used directly in octal notation
+  // Convention (matches C golden): bit 0 = newest input, higher bits = older state
+  // Generator polynomials use direct octal notation where tap i maps to bit i
   localparam [K-1:0] G0_MASK = G0_OCT;
   localparam [K-1:0] G1_MASK = G1_OCT;
   reg [K-1:0] reg_vec;
 
   always @ (*) begin
-    // Register: reg[0]=b (newest input), reg[M:1]=pred (state bits)
-    // Direct polynomial application: bit positions match tap positions
+    // Register: reg[0]=b (newest input at LSB), reg[K-1:1]=pred (state bits)
+    // This matches the C golden: reg = (b & 1) | (pred << 1)
     reg_vec = {pred, b};
-    // C model: c0 = parity(reg & g0), c1 = parity(reg & g1)
-    // Returns: (c0 << 1) | c1, so expected[1]=c0, expected[0]=c1
+    // c0 = parity(reg & G0), c1 = parity(reg & G1)
     expected[1] = ^(reg_vec & G0_MASK);  // c0 = parity(reg & G0)
     expected[0] = ^(reg_vec & G1_MASK);  // c1 = parity(reg & G1)
   end

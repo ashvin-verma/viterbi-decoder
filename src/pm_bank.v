@@ -45,24 +45,24 @@ module pm_bank #(
       end
       prev_A <= 1'b1;  // After reset, Bank A is previous
     end else begin
-      // init_frame: initialize current bank for new frame
+      // init_frame: initialize PREVIOUS bank (the one we'll read from)
       if (init_frame) begin
         if (prev_A) begin
-          // Bank B is current
-          bank1[0] <= {Wm{1'b0}};  // PM for state 0
+          // Bank A is previous - initialize it for reading
+          bank0[0] <= {Wm{1'b0}};  // PM for state 0
           for (i = 1; i < S; i = i + 1) begin
-            bank1[i] <= {Wm{1'b1}};  // INF for all other states
+            bank0[i] <= {Wm{1'b1}};  // INF for all other states
           end
         end else begin
-          // Bank A is current
-          bank0[0] <= {Wm{1'b0}};
+          // Bank B is previous - initialize it
+          bank1[0] <= {Wm{1'b0}};
           for (i = 1; i < S; i = i + 1) begin
-            bank0[i] <= {Wm{1'b1}};  // INF
+            bank1[i] <= {Wm{1'b1}};  // INF
           end
         end
       end
       
-      // Write to current bank
+      // Write to current bank (opposite of previous)
       if (wr_en) begin
         if (prev_A) begin
           bank1[wr_idx] <= wr_pm;  // Write to Bank B (current)

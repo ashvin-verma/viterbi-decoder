@@ -38,7 +38,7 @@ module conv_encoder #(
             if (bit_valid) begin
                 // Shift in new bit
                 shift_reg <= {shift_reg[M-2:0], bit_in};
-                sr_extended <= {shift_reg[M-2:0], bit_in, bit_in};  // Extend for parity calc
+                sr_extended <= {shift_reg, bit_in};  // Extend for parity calc
                 
                 // Wait one cycle for shift
                 sym_out <= {y0, y1};

@@ -1,10 +1,6 @@
 `default_nettype none
 `timescale 1ns / 1ps
 
-// `include "../src/viterbi_core.v"
-
-/* Simple structural wrapper that instantiates the viterbi_core directly so
-   cocotb can exercise the symbol-rate handshake. */
 module tb ();
 
   // Dump the signals to a VCD file. You can view it with gtkwave or surfer.
@@ -16,19 +12,25 @@ module tb ();
 
   // Expose clock/reset so cocotb can drive them.
   reg clk;
-  reg rst;
+  reg rst_n;
 
-  // Symbol-rate interface
-  reg        rx_sym_valid;
-  wire       rx_sym_ready;
-  reg  [1:0] rx_sym;
+  // TT wrapper interface
+  reg  [7:0] ui_in;
+  wire [7:0] uo_out;
+  reg  [7:0] uio_in;
+  wire [7:0] uio_out;
+  wire [7:0] uio_oe;
+  reg        ena;
 
-  // Optional tail forcing control
-  reg        force_state0;
-
-  // Decoder output stream
-  wire       dec_bit_valid;
-  wire       dec_bit;
+  // Expose the Viterbi-level signals for cocotb convenience
+  // Inputs (directly mapped to ui_in bits):
+  //   ui_in[0] = rx_sym_valid
+  //   ui_in[2:1] = rx_sym[1:0]
+  //   ui_in[3] = force_state0
+  // Outputs (from uo_out bits):
+  //   uo_out[0] = dec_bit_valid
+  //   uo_out[1] = dec_bit
+  //   uo_out[2] = rx_sym_ready
 
   // Clock generation (100 MHz default)
   initial begin
@@ -38,27 +40,25 @@ module tb ();
 
   // Default signal initialization; cocotb will drive thereafter.
   initial begin
-    rst           = 1'b1;
-    rx_sym_valid  = 1'b0;
-    rx_sym        = 2'b00;
-    force_state0  = 1'b0;
+    rst_n   = 1'b0;
+    ui_in   = 8'b0;
+    uio_in  = 8'b0;
+    ena     = 1'b1;
   end
 
-  tt_um_viterbi_core #(
-      .K      (4),
-      .D      (24),
-      .Wm     (6),
-      .G0_OCT ('o17),
-      .G1_OCT ('o13)
-  ) dut (
-      .clk          (clk),
-      .rst          (rst),
-      .rx_sym_valid (rx_sym_valid),
-      .rx_sym_ready (rx_sym_ready),
-      .rx_sym       (rx_sym),
-      .dec_bit_valid(dec_bit_valid),
-      .dec_bit      (dec_bit),
-      .force_state0 (force_state0)
+  tt_um_ashvin_viterbi dut (
+`ifdef USE_POWER_PINS
+      .VPWR(1'b1),
+      .VGND(1'b0),
+`endif
+      .ui_in   (ui_in),
+      .uo_out  (uo_out),
+      .uio_in  (uio_in),
+      .uio_out (uio_out),
+      .uio_oe  (uio_oe),
+      .ena     (ena),
+      .clk     (clk),
+      .rst_n   (rst_n)
   );
 
 endmodule

@@ -4,104 +4,102 @@ module traceback_v2 #(
     parameter int K = 7,
     parameter int M = K - 1,
     parameter int D = 40
-) (
+)(
     input  wire clk,
     input  wire rst,
 
+    // Single-cycle start for one traceback burst
     input  wire start,
-    input  wire [($clog2(D) > 0 ? $clog2(D) : 1)-1:0] start_time,
-    input  wire [M-1:0]                                start_state,
-    input  wire                                        force_state0,
+    input  wire [((D>1)?$clog2(D):1)-1:0] start_time,   // row index = newest row (t): (wr_ptr-1)
+    input  wire [M-1:0]                   start_state,  // end state at time t (or 0 if forced)
+    input  wire                           force_state0,
 
-    output reg  [($clog2(D) > 0 ? $clog2(D) : 1)-1:0]  tb_time,
-    output reg  [M-1:0]                                tb_state,
-    input  wire                                        tb_surv_bit,
+    // Survivor read interface
+    output reg  [((D>1)?$clog2(D):1)-1:0] tb_time,      // drives survivor_mem.rd_time
+    output reg  [M-1:0]                   tb_state,     // drives survivor_mem.rd_state
+    input  wire                           tb_surv_bit,  // survivor_mem.surv_bit
 
-    output reg                                         busy,
-    output reg                                         dec_bit_valid,
-    output reg                                         dec_bit
+    // Status + decoded bit (1 pulse per burst)
+    output reg                            busy,
+    output reg                            dec_bit_valid,
+    output reg                            dec_bit
 );
 
-    localparam int TIME_W  = (D > 1) ? $clog2(D) : 1;
-    localparam int COUNT_W = (D > 1) ? $clog2(D) : 1;
+    localparam int TIME_W  = (D>1)?$clog2(D):1;
+    localparam int COUNT_W = (D>1)?$clog2(D):1;
 
-    typedef enum logic [1:0] {
-        TB_IDLE,
-        TB_PRIME,
-        TB_RUN
-    } tb_state_e;
+    typedef enum logic [1:0] { TB_IDLE, TB_PRIME, TB_RUN } tb_e;
+    tb_e fsm;
 
-    tb_state_e          tb_fsm;
-    reg [COUNT_W-1:0]   depth;
-    reg                 surv_bit_q;
-`ifdef TRACEBACK_V2_DEBUG
-    integer start_count;
-    integer done_count;
-`endif
+    reg [COUNT_W-1:0] depth;       // counts 0..D-1
+    reg               surv_q;      // registered survivor bit from current (time,state)
 
-    wire [TIME_W-1:0] prev_time = (tb_time == {TIME_W{1'b0}})
-                                  ? TIME_W'(D > 0 ? D - 1 : 0)
-                                  : (tb_time - TIME_W'(1));
+    // Prev time index (wrap)
+    wire [TIME_W-1:0] time_prev =
+        (tb_time == {TIME_W{1'b0}}) ? TIME_W'(D>0?D-1:0) : (tb_time - TIME_W'(1));
+
+    // State predecessor given bit (shift-in at MSB)
+    function automatic [M-1:0] pred_state(input [M-1:0] s, input bit b);
+        pred_state = {b, s[M-1:1]};
+    endfunction
 
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
-            tb_fsm        <= TB_IDLE;
+            fsm           <= TB_IDLE;
             busy          <= 1'b0;
-            depth         <= {COUNT_W{1'b0}};
-            tb_time       <= {TIME_W{1'b0}};
-            tb_state      <= {M{1'b0}};
+            depth         <= '0;
+            tb_time       <= '0;
+            tb_state      <= '0;
             dec_bit_valid <= 1'b0;
             dec_bit       <= 1'b0;
-            surv_bit_q    <= 1'b0;
-`ifdef TRACEBACK_V2_DEBUG
-            start_count   <= 0;
-            done_count    <= 0;
-`endif
+            surv_q        <= 1'b0;
         end else begin
+            // default outputs
             dec_bit_valid <= 1'b0;
-            surv_bit_q    <= tb_surv_bit;
 
-            case (tb_fsm)
-                TB_IDLE: begin
-                    if (start) begin
-                        busy          <= 1'b1;
-                        depth         <= {COUNT_W{1'b0}};
-                        tb_time       <= start_time;
-                        tb_state      <= force_state0 ? {M{1'b0}} : start_state;
-                        tb_fsm        <= TB_PRIME;
-`ifdef TRACEBACK_V2_DEBUG
-                        start_count   <= start_count + 1;
-`endif
-                    end
+            // always capture current survivor bit (for use next cycle)
+            surv_q <= tb_surv_bit;
+
+            unique case (fsm)
+            TB_IDLE: begin
+                busy <= 1'b0;
+                if (start) begin
+                    busy     <= 1'b1;
+                    depth    <= '0;
+                    tb_time  <= start_time;
+                    tb_state <= force_state0 ? '0 : start_state;
+                    fsm      <= TB_PRIME;      // allow 1 cycle for first surv read
                 end
-                TB_PRIME: begin
-                    tb_fsm <= TB_RUN;
+            end
+
+            TB_PRIME: begin
+                // tb_surv_bit is now valid for (tb_time, tb_state).
+                // Take the first traceback step using the combinational read.
+                tb_state <= pred_state(tb_state, tb_surv_bit);
+                tb_time  <= time_prev;
+                depth    <= COUNT_W'(1);
+                fsm      <= TB_RUN;
+            end
+
+            TB_RUN: begin
+                // Step one time back using combinational survivor read
+                // (tb_surv_bit reflects current tb_time/tb_state registered values)
+                tb_state <= pred_state(tb_state, tb_surv_bit);
+                tb_time  <= time_prev;
+                depth    <= depth + COUNT_W'(1);
+
+                if (depth == COUNT_W'(D>0?D-1:0)) begin
+                    dec_bit       <= tb_state[0];
+                    dec_bit_valid <= 1'b1;
+                    busy          <= 1'b0;
+                    fsm           <= TB_IDLE;
                 end
-                TB_RUN: begin
-                    tb_state <= {surv_bit_q, tb_state[M-1:1]};
-                    tb_time  <= prev_time;
-                    depth    <= depth + COUNT_W'(1);
-                    if (depth == COUNT_W'(D > 0 ? D - 1 : 0)) begin
-                        // Output survivor bit directly (matches C golden model)
-                        dec_bit       <= surv_bit_q;
-                        dec_bit_valid <= 1'b1;
-                        busy          <= 1'b0;
-                        tb_fsm        <= TB_IDLE;
-`ifdef TRACEBACK_V2_DEBUG
-                        done_count    <= done_count + 1;
-`endif
-                    end
-                end
-                default: tb_fsm <= TB_IDLE;
+            end
+
+            default: fsm <= TB_IDLE;
             endcase
         end
     end
-
-`ifdef TRACEBACK_V2_DEBUG
-    final begin
-        $display("TRACEBACK_V2 stats: start=%0d done=%0d", start_count, done_count);
-    end
-`endif
 
 endmodule
 
