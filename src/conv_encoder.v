@@ -12,17 +12,17 @@
 //   - state[M-1] is the oldest bit (MSB)
 //   - in_bit is the newest bit (LSB, position 0)
 //
-// Default polynomials match the K=7 NASA code used by the decoder:
-//   G0_OCT = 'o171  (0x79 = 0b1111001)
-//   G1_OCT = 'o133  (0x5B = 0b1011011)
+// Default polynomials match the K=5 code used by the decoder:
+//   G0_OCT = 'o23  (0x13 = 0b10011)
+//   G1_OCT = 'o35  (0x1D = 0b11101)
 //==============================================================================
 
 `default_nettype none
 
 module conv_encoder #(
-    parameter K      = 7,
-    parameter G0_OCT = 'o171,
-    parameter G1_OCT = 'o133
+    parameter K      = 5,
+    parameter G0_OCT = 'o23,
+    parameter G1_OCT = 'o35
 ) (
     input  wire        clk,
     input  wire        rst,

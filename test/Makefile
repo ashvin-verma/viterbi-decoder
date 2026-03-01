@@ -44,7 +44,6 @@ COMPILE_ARGS    += -gno-specify
 VERILOG_SOURCES += $(PWD)/sg13g2_stdcell_functional.v
 else
 # Sky130 PDK
-COMPILE_ARGS    += -DUSE_POWER_PINS
 VERILOG_SOURCES += $(PDK_ROOT)/sky130A/libs.ref/sky130_fd_sc_hd/verilog/primitives.v
 VERILOG_SOURCES += $(PDK_ROOT)/sky130A/libs.ref/sky130_fd_sc_hd/verilog/sky130_fd_sc_hd.v
 endif
@@ -58,14 +57,17 @@ endif
 COMPILE_ARGS 		+= -I$(SRC_DIR)
 COMPILE_ARGS 		+= -g2012
 
-# Parametric K override: set TB_K=5 or TB_K=3 to reconfigure the RTL
+# Parametric K override: set TB_K=3, TB_K=5, or TB_K=7 to reconfigure the RTL
 ifdef TB_K
-ifeq ($(TB_K),5)
-COMPILE_ARGS += -DTB_K_VAL=5 -DTB_D_VAL=24 -DTB_G0_VAL=19 -DTB_G1_VAL=29
-SIM_BUILD = sim_build/rtl_k5
-else ifeq ($(TB_K),3)
+ifeq ($(TB_K),3)
 COMPILE_ARGS += -DTB_K_VAL=3 -DTB_D_VAL=12 -DTB_G0_VAL=7 -DTB_G1_VAL=5
 SIM_BUILD = sim_build/rtl_k3
+else ifeq ($(TB_K),5)
+COMPILE_ARGS += -DTB_K_VAL=5 -DTB_D_VAL=24 -DTB_G0_VAL=19 -DTB_G1_VAL=29
+SIM_BUILD = sim_build/rtl_k5
+else ifeq ($(TB_K),7)
+COMPILE_ARGS += -DTB_K_VAL=7 -DTB_D_VAL=42 -DTB_G0_VAL=121 -DTB_G1_VAL=91
+SIM_BUILD = sim_build/rtl_k7
 endif
 endif
 

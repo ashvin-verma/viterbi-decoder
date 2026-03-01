@@ -1,9 +1,9 @@
 `default_nettype none
 
 module traceback_v2 #(
-    parameter int K = 7,
+    parameter int K = 5,
     parameter int M = K - 1,
-    parameter int D = 40
+    parameter int D = 24
 )(
     input  wire clk,
     input  wire rst,

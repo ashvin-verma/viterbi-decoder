@@ -3,12 +3,12 @@ project:
   title:        "Viterbi Decoder"      # Project title
   author:       "Ashvin Verma"      # Your name
   discord:      "ashverma"      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  "Hardware Viterbi decoder for K=7 NASA convolutional code (171/133 octal), 64 states, rate 1/2, dual-mode: raw streaming + UART byte batch"      # One line description of what your project does
+  description:  "Hardware Viterbi decoder for K=5 convolutional code (23/35 octal), 16 states, rate 1/2, dual-mode: raw streaming + UART byte batch"      # One line description of what your project does
   language:     "Verilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
   clock_hz:     50000000       # Clock frequency in Hz (or 0 if not applicable)
 
   # How many tiles your design occupies? A single tile is about 167x108 uM.
-  tiles: "6x2"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
+  tiles: "2x2"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
 
   # Your top module name must start with "tt_um_". Make it unique by including your github username:
   top_module:  "tt_um_ashvin_viterbi"

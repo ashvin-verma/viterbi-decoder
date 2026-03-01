@@ -6,11 +6,11 @@
 `default_nettype none
 
 module tt_um_ashvin_viterbi #(
-    parameter K = 7,
-    parameter D_TB = 42,
+    parameter K = 5,
+    parameter D_TB = 24,
     parameter RATE = 2,
-    parameter G0_OCT = 'o171,
-    parameter G1_OCT = 'o133,
+    parameter G0_OCT = 'o23,
+    parameter G1_OCT = 'o35,
     parameter G2_OCT = 'o0
 ) (
     input  wire [7:0] ui_in,    // Dedicated inputs

@@ -46,7 +46,9 @@ module tb ();
     ena     = 1'b1;
   end
 
-  tt_um_ashvin_viterbi #(
+  tt_um_ashvin_viterbi
+`ifndef GL_TEST
+  #(
 `ifdef TB_K_VAL
       .K(`TB_K_VAL),
 `endif
@@ -60,10 +62,14 @@ module tb ();
       .G1_OCT(`TB_G1_VAL),
 `endif
       .RATE(2)
-  ) dut (
+  )
+`endif
+  dut (
 `ifdef USE_POWER_PINS
+`ifndef GL_TEST
       .VPWR(1'b1),
       .VGND(1'b0),
+`endif
 `endif
       .ui_in   (ui_in),
       .uo_out  (uo_out),

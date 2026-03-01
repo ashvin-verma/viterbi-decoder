@@ -1,12 +1,12 @@
 `default_nettype none
 
 module tt_um_viterbi_core #(
-    parameter int K       = 7,
-    parameter int D       = 42,
+    parameter int K       = 5,
+    parameter int D       = 24,
     parameter int Wm      = 8,
     parameter int RATE    = 2,
-    parameter int G0_OCT  = 'o171,  // default (171,133) for K=7 NASA
-    parameter int G1_OCT  = 'o133,
+    parameter int G0_OCT  = 'o23,   // default (23,35) for K=5
+    parameter int G1_OCT  = 'o35,
     parameter int G2_OCT  = 'o0
 )(
     input  wire         clk,

@@ -10,10 +10,10 @@ import numpy as np
 from commpy.channelcoding import Trellis, conv_encode as commpy_conv_encode, viterbi_decode as commpy_viterbi_decode
 
 # ===========================================================================
-# Design parameters — defaults for K=7 NASA (171/133 octal)
-# Override via environment: TB_K=5 to test K=5 configuration
+# Design parameters — defaults for K=5 (23/35 octal)
+# Override via environment: TB_K=7 to test K=7 configuration
 # ===========================================================================
-K = int(os.environ.get("TB_K", "7"))
+K = int(os.environ.get("TB_K", "5"))
 M = K - 1
 _K_DEFAULTS = {
     3: {"D": 12, "G0": 0o7,   "G1": 0o5},
@@ -26,6 +26,9 @@ G0_OCT = _kd.get("G0", int(os.environ.get("TB_G0", "0"), 8))
 G1_OCT = _kd.get("G1", int(os.environ.get("TB_G1", "0"), 8))
 
 S = 1 << M  # number of states (64 for K=7, 16 for K=5)
+
+# Gate-level sim mode: detected via GATES env var (set by Makefile GATES=yes)
+GL_TEST = os.environ.get("GATES", "") == "yes"
 
 # commpy trellis for independent golden reference
 _memory = np.array([M])
@@ -115,11 +118,12 @@ def conv_encode(bits):
 # DUT interaction helpers
 # ===========================================================================
 # K=7 has 64 states per sweep vs 16 for K=5 — scale timeouts accordingly
-_READY_TIMEOUT = S + D + 200  # generous: sweep + traceback + margin
+# GL sims need more cycles due to unit-delay gate propagation
+_READY_TIMEOUT = (S + D + 200) * (10 if GL_TEST else 1)
 
 
 async def _send_symbol(dut, sym):
-    """Wait for ready, drive one symbol for one cycle, wait for ready again."""
+    """Wait for ready, then drive one symbol for one cycle."""
     for _ in range(_READY_TIMEOUT):
         await RisingEdge(dut.clk)
         if _get_rx_sym_ready(dut):
@@ -132,11 +136,6 @@ async def _send_symbol(dut, sym):
     await RisingEdge(dut.clk)
     _set_rx_sym_valid(dut, 0)
 
-    for _ in range(_READY_TIMEOUT):
-        await RisingEdge(dut.clk)
-        if _get_rx_sym_ready(dut):
-            break
-
 
 async def _reset(dut):
     """Reset the DUT and wait for ready."""
@@ -147,10 +146,12 @@ async def _reset(dut):
     dut.ui_in.value = 0
     dut.uio_in.value = 0
     dut.ena.value = 1
-    await ClockCycles(dut.clk, 5)
+    reset_cycles = 20 if GL_TEST else 5
+    await ClockCycles(dut.clk, reset_cycles)
     dut.rst_n.value = 1
 
-    for _ in range(50):
+    ready_wait = 500 if GL_TEST else 50
+    for _ in range(ready_wait):
         await RisingEdge(dut.clk)
         if _get_rx_sym_ready(dut):
             break
@@ -195,7 +196,8 @@ async def _run_frame(dut, info_bits, inject_errors=None):
         await _send_symbol(dut, sym)
 
     # Wait extra cycles for final traceback to complete (scale with D)
-    await ClockCycles(dut.clk, D + 50)
+    flush_wait = (D + 50) * (10 if GL_TEST else 1)
+    await ClockCycles(dut.clk, flush_wait)
 
     stop.set()
     await ClockCycles(dut.clk, 2)
@@ -223,10 +225,11 @@ async def test_viterbi_core_smoke(dut):
     dut.uio_in.value = 0
     dut.ena.value = 1
 
-    await ClockCycles(dut.clk, 5)
+    await ClockCycles(dut.clk, 20 if GL_TEST else 5)
     dut.rst_n.value = 1
 
-    for _ in range(50):
+    ready_wait = 500 if GL_TEST else 50
+    for _ in range(ready_wait):
         await RisingEdge(dut.clk)
         if _get_rx_sym_ready(dut):
             break
