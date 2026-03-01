@@ -8,3 +8,11 @@ src/config_merged.json
 test/sim_build
 test/__pycache__/
 test/gate_level_netlist.v
+.venv/
+.claude/
+fpga/*/vivado_project/
+fpga/*/vivado*.jou
+fpga/*/vivado*.log
+fpga/*/*.backup.*
+test/test_m1_debug.py
+test/results.xml

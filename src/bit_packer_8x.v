@@ -25,13 +25,13 @@ module bit_packer_8x (
             if (out_valid && out_ready) begin
                 out_valid <= 1'b0;
             end
-            
-            // Shift in new bits only when output is not stalled
-            if (dec_bit_valid && !out_valid) begin
+
+            // Always accept decoded bits into shift register
+            if (dec_bit_valid) begin
                 shift_reg <= {dec_bit, shift_reg[7:1]};
                 bit_count <= bit_count + 1'b1;
-                
-                // When 8 bits accumulated, output byte
+
+                // When 8 bits accumulated, latch output byte
                 if (bit_count == 3'd7) begin
                     out_byte <= {dec_bit, shift_reg[7:1]};
                     out_valid <= 1'b1;

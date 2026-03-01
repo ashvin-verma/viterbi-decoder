@@ -11,10 +11,15 @@ PROJECT_SOURCES = project.v \
 	branch_metric.v \
 	expected_bits.v \
 	ham2.v \
+	ham3.v \
 	acs_core.v \
 	pm_bank.v \
 	survivor_mem.v \
-	traceback_v2.v
+	traceback_v2.v \
+	sym_unpacker_4x.v \
+	sym_unpacker_2x3.v \
+	bit_packer_8x.v \
+	conv_encoder.v
 
 # PDK selection for gate-level sims (set PDK=ihp-sg13g2 or PDK=sky130A)
 
@@ -52,6 +57,17 @@ endif
 # Allow sharing configuration between design and testbench via `include`:
 COMPILE_ARGS 		+= -I$(SRC_DIR)
 COMPILE_ARGS 		+= -g2012
+
+# Parametric K override: set TB_K=5 or TB_K=3 to reconfigure the RTL
+ifdef TB_K
+ifeq ($(TB_K),5)
+COMPILE_ARGS += -DTB_K_VAL=5 -DTB_D_VAL=24 -DTB_G0_VAL=19 -DTB_G1_VAL=29
+SIM_BUILD = sim_build/rtl_k5
+else ifeq ($(TB_K),3)
+COMPILE_ARGS += -DTB_K_VAL=3 -DTB_D_VAL=12 -DTB_G0_VAL=7 -DTB_G1_VAL=5
+SIM_BUILD = sim_build/rtl_k3
+endif
+endif
 
 # Include the testbench sources:
 VERILOG_SOURCES += $(PWD)/tb.v

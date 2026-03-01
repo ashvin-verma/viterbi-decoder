@@ -1,26 +1,28 @@
 `default_nettype none
 
 module tt_um_viterbi_core #(
-    parameter int K       = 4,
-    parameter int D       = 24,
-    parameter int Wm      = 4,
-    parameter int G0_OCT  = 'o17,  // default (17,13) for K=4
-    parameter int G1_OCT  = 'o13
+    parameter int K       = 7,
+    parameter int D       = 42,
+    parameter int Wm      = 8,
+    parameter int RATE    = 2,
+    parameter int G0_OCT  = 'o171,  // default (171,133) for K=7 NASA
+    parameter int G1_OCT  = 'o133,
+    parameter int G2_OCT  = 'o0
 )(
-    input  logic        clk,
-    input  logic        rst,
+    input  wire         clk,
+    input  wire         rst,
 
     // Symbol stream in (one symbol accepted per full decode burst)
-    input  logic        rx_sym_valid,
-    output logic        rx_sym_ready,
-    input  logic [1:0]  rx_sym,
+    input  wire         rx_sym_valid,
+    output wire         rx_sym_ready,
+    input  wire  [RATE-1:0]  rx_sym,
 
     // Decoded output (one bit per accepted symbol after warm-up)
-    output logic        dec_bit_valid,
-    output logic        dec_bit,
+    output wire         dec_bit_valid,
+    output wire         dec_bit,
 
     // Tail handling
-    input  logic        force_state0
+    input  wire         force_state0
 );
 
     localparam int M            = (K>1)?(K-1):1;
@@ -29,18 +31,18 @@ module tt_um_viterbi_core #(
     localparam int TIME_W       = (D>1) ? $clog2(D) : 1;   // circular index width
     localparam int WARM_W       = TIME_W + 1;
 
-    typedef enum logic [2:0] { ST_IDLE, ST_INIT, ST_SWEEP, ST_COMMIT, ST_TRACE } fsm_e;
+    typedef enum logic [2:0] { ST_IDLE, ST_INIT, ST_SWEEP, ST_COMMIT } fsm_e;
     fsm_e state, state_n;
 
     // Latches / indices
-    logic [1:0]            rx_sym_q;
+    logic [RATE-1:0]       rx_sym_q;
     logic                  accept_sym;
     logic [$clog2(S)-1:0]  sweep_idx;
     logic                  last_idx;
 
     // Trellis / ACS wires
     logic [M-1:0]          p0, p1;
-    logic [1:0]            exp0, exp1;
+    logic [RATE-1:0]       exp0, exp1;
     logic [Wb-1:0]         bm0, bm1;
     logic [Wm-1:0]         pm0, pm1, pm_out;
     logic                  surv_sel;
@@ -74,7 +76,7 @@ module tt_um_viterbi_core #(
     // ------------------------------------------------------------------------
     // Handshakes / simple decodes
     // ------------------------------------------------------------------------
-    assign rx_sym_ready = (state == ST_IDLE);
+    assign rx_sym_ready = (state == ST_IDLE) && !tb_busy && !tb_start;
     assign accept_sym   = rx_sym_valid && rx_sym_ready;
     assign last_idx     = (sweep_idx == S-1);
     assign pm_wr_en     = (state == ST_SWEEP);
@@ -93,15 +95,14 @@ module tt_um_viterbi_core #(
             ST_IDLE  : if (accept_sym)             state_n = ST_INIT;
             ST_INIT  :                              state_n = ST_SWEEP;   // 1-cycle init pulse
             ST_SWEEP : if (last_idx)               state_n = ST_COMMIT;
-            ST_COMMIT:                              state_n = ST_TRACE;   // commit row, swap banks, start TB
-            ST_TRACE : if (!tb_busy && !tb_start)   state_n = ST_IDLE;     // wait for TB burst to finish (tb_start guards 1-cycle busy propagation delay)
+            ST_COMMIT:                              state_n = ST_IDLE;    // return immediately; TB runs in parallel (rx_sym_ready gated by !tb_busy)
             default  :                              state_n = ST_IDLE;
         endcase
     end
 
     // Capture symbol at accept
     always_ff @(posedge clk or posedge rst) begin
-        if (rst) rx_sym_q <= 2'b0;
+        if (rst) rx_sym_q <= '0;
         else if (accept_sym) rx_sym_q <= rx_sym;
     end
 
@@ -162,15 +163,15 @@ module tt_um_viterbi_core #(
     assign p1 = base_pred | MSB_MASK;      // input 1
 
     // Expected symbols for both candidates (input bit = sweep_idx[0])
-    expected_bits #(.K(K), .G0_OCT(G0_OCT), .G1_OCT(G1_OCT)) u_exp0 (
+    expected_bits #(.K(K), .RATE(RATE), .G0_OCT(G0_OCT), .G1_OCT(G1_OCT), .G2_OCT(G2_OCT)) u_exp0 (
         .pred(base_pred), .b(sweep_idx[0]), .expected(exp0)
     );
-    expected_bits #(.K(K), .G0_OCT(G0_OCT), .G1_OCT(G1_OCT)) u_exp1 (
+    expected_bits #(.K(K), .RATE(RATE), .G0_OCT(G0_OCT), .G1_OCT(G1_OCT), .G2_OCT(G2_OCT)) u_exp1 (
         .pred(p1      ), .b(sweep_idx[0]), .expected(exp1)
     );
 
     // Branch metric (hard decision)
-    branch_metric #(.Wb(Wb)) u_bm (
+    branch_metric #(.Wb(Wb), .RATE(RATE)) u_bm (
         .rx_sym(rx_sym_q), .exp_sym0(exp0), .exp_sym1(exp1), .bm0(bm0), .bm1(bm1)
     );
 
