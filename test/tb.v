@@ -22,6 +22,11 @@ module tb ();
   wire [7:0] uio_oe;
   reg        ena;
 
+`ifdef USE_POWER_PINS
+  wire VPWR = 1'b1;
+  wire VGND = 1'b0;
+`endif
+
   // Expose the Viterbi-level signals for cocotb convenience
   // Inputs (directly mapped to ui_in bits):
   //   ui_in[0] = rx_sym_valid
@@ -66,8 +71,8 @@ module tb ();
 `endif
   dut (
 `ifdef USE_POWER_PINS
-      .VPWR(1'b1),
-      .VGND(1'b0),
+      .VPWR(VPWR),
+      .VGND(VGND),
 `endif
       .ui_in   (ui_in),
       .uo_out  (uo_out),
