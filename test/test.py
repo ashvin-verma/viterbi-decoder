@@ -556,7 +556,7 @@ async def test_long_frame(dut):
 
 
 @cocotb.test()
-async def test_wrong_polynomial_expected_failure(dut):
+async def test_wrong_polynomial_mismatch(dut):
     """Feed symbols encoded with wrong polynomials: decoder MUST produce errors."""
     clock = Clock(dut.clk, 10, unit="ns")
     cocotb.start_soon(clock.start())

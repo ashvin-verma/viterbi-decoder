@@ -44,6 +44,7 @@ COMPILE_ARGS    += -gno-specify
 VERILOG_SOURCES += $(PWD)/sg13g2_stdcell_functional.v
 else
 # Sky130 PDK
+COMPILE_ARGS    += -DUSE_POWER_PINS
 VERILOG_SOURCES += $(PDK_ROOT)/sky130A/libs.ref/sky130_fd_sc_hd/verilog/primitives.v
 VERILOG_SOURCES += $(PDK_ROOT)/sky130A/libs.ref/sky130_fd_sc_hd/verilog/sky130_fd_sc_hd.v
 endif

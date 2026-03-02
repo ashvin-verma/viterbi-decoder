@@ -66,10 +66,8 @@ module tb ();
 `endif
   dut (
 `ifdef USE_POWER_PINS
-`ifndef GL_TEST
       .VPWR(1'b1),
       .VGND(1'b0),
-`endif
 `endif
       .ui_in   (ui_in),
       .uo_out  (uo_out),
