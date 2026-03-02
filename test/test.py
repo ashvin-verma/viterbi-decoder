@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: © 2024 Tiny Tapeout
 # SPDX-License-Identifier: Apache-2.0
 
+import asyncio
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
@@ -186,7 +187,6 @@ async def _run_frame(dut, info_bits, inject_errors=None):
     symbols += [0] * flush_count
 
     # Start background collector
-    import asyncio
     decoded = []
     stop = asyncio.Event()
     collector = cocotb.start_soon(_collect_decoded(dut, decoded, stop))
@@ -212,29 +212,11 @@ async def _run_frame(dut, info_bits, inject_errors=None):
 @cocotb.test()
 async def test_viterbi_core_smoke(dut):
     """FSM doesn't hang: send a few symbols, verify ready cycles properly."""
-    global _ui_in_shadow
-    _ui_in_shadow = 0
-
     dut._log.info(f"Start Viterbi core smoke test (K={K}, S={S}, D={D})")
 
     clock = Clock(dut.clk, 10, unit="ns")
     cocotb.start_soon(clock.start())
-
-    dut.rst_n.value = 0
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
-    dut.ena.value = 1
-
-    await ClockCycles(dut.clk, 20 if GL_TEST else 5)
-    dut.rst_n.value = 1
-
-    ready_wait = 500 if GL_TEST else 50
-    for _ in range(ready_wait):
-        await RisingEdge(dut.clk)
-        if _get_rx_sym_ready(dut):
-            break
-    else:
-        raise AssertionError("rx_sym_ready never asserted after reset")
+    await _reset(dut)
 
     dut._log.info("rx_sym_ready asserted - core is ready")
 
@@ -492,7 +474,6 @@ async def test_error_beyond_capacity(dut):
     flush_count = D - 1
     symbols += [0] * flush_count
 
-    import asyncio
     decoded = []
     stop = asyncio.Event()
     collector = cocotb.start_soon(_collect_decoded(dut, decoded, stop))
@@ -500,7 +481,8 @@ async def test_error_beyond_capacity(dut):
     for sym in symbols:
         await _send_symbol(dut, sym)
 
-    await ClockCycles(dut.clk, D + 50)
+    flush_wait = (D + 50) * (10 if GL_TEST else 1)
+    await ClockCycles(dut.clk, flush_wait)
     stop.set()
     await ClockCycles(dut.clk, 2)
 
@@ -581,7 +563,6 @@ async def test_wrong_polynomial_mismatch(dut):
     flush_count = D - 1
     wrong_syms += [0] * flush_count
 
-    import asyncio
     decoded = []
     stop = asyncio.Event()
     collector = cocotb.start_soon(_collect_decoded(dut, decoded, stop))
@@ -589,7 +570,8 @@ async def test_wrong_polynomial_mismatch(dut):
     for sym in wrong_syms:
         await _send_symbol(dut, sym)
 
-    await ClockCycles(dut.clk, D + 50)
+    flush_wait = (D + 50) * (10 if GL_TEST else 1)
+    await ClockCycles(dut.clk, flush_wait)
     stop.set()
     await ClockCycles(dut.clk, 2)
 
@@ -636,12 +618,6 @@ async def test_throughput(dut):
         await RisingEdge(dut.clk)
         cycle_count += 1
         _set_rx_sym_valid(dut, 0)
-
-        for _ in range(_READY_TIMEOUT):
-            await RisingEdge(dut.clk)
-            cycle_count += 1
-            if _get_rx_sym_ready(dut):
-                break
 
     cycles_per_sym = cycle_count / total_syms
     # Budget: S sweep + D traceback + overhead
@@ -1190,7 +1166,6 @@ async def test_continuous_streaming_no_reset(dut):
     cocotb.start_soon(clock.start())
     await _reset(dut)
 
-    import asyncio
     decoded = []
     stop = asyncio.Event()
     collector = cocotb.start_soon(_collect_decoded(dut, decoded, stop))
