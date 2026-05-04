@@ -11,8 +11,13 @@ test/gate_level_netlist.v
 .venv/
 .claude/
 fpga/*/vivado_project/
+fpga/*/vivado_project_ps7/
 fpga/*/vivado*.jou
 fpga/*/vivado*.log
 fpga/*/*.backup.*
+fpga/*/server.log
+fpga/*/NA/
+fpga/*/web/__pycache__/
+fpga/*/scripts/_build_k[0-9].tcl
 test/test_m1_debug.py
 test/results.xml

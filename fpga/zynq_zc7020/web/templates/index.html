@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Viterbi Decoder FPGA Demo</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+</head>
+<body>
+    <header>
+        <h1>Viterbi Decoder <span class="accent">FPGA Demo</span></h1>
+        <p class="subtitle" id="subtitle">K=7, Rate-1/2 Convolutional Code &mdash; NASA Standard Polynomials</p>
+        <div id="status-bar">
+            <span id="status-indicator" class="indicator off"></span>
+            <span id="status-text">Checking FPGA...</span>
+        </div>
+    </header>
+
+    <main>
+        <!-- Input Section -->
+        <section class="card input-section">
+            <h2>1. Input Message</h2>
+            <div class="input-row">
+                <input type="text" id="message-input" placeholder="Type a message (max 24 chars)"
+                       maxlength="24" value="Hello World">
+                <button id="send-btn">Decode</button>
+            </div>
+            <div class="slider-row">
+                <label for="error-slider">Channel Error Rate:</label>
+                <input type="range" id="error-slider" min="0" max="50" value="10" step="1">
+                <span id="error-value">10%</span>
+            </div>
+            <div class="slider-row">
+                <label for="k-select">Constraint Length:</label>
+                <select id="k-select">
+                    <option value="3">K=3 (Minimal)</option>
+                    <option value="5">K=5 (Moderate)</option>
+                    <option value="7" selected>K=7 (NASA Standard)</option>
+                    <option value="9">K=9 (CCSDS, 256 states)</option>
+                </select>
+            </div>
+            <div class="slider-row">
+                <label for="trellis-check">Show Trellis:</label>
+                <input type="checkbox" id="trellis-check">
+                <span class="dim">(visualize decoder internals)</span>
+            </div>
+            <div class="button-row">
+                <button class="btn-secondary" id="run-once-btn">Run Once</button>
+                <button class="btn-secondary" id="program-btn">Program FPGA</button>
+                <button class="btn-secondary" id="mode-toggle-btn">Switch to Software</button>
+            </div>
+        </section>
+
+        <!-- Pipeline Visualization -->
+        <section class="card pipeline-section">
+            <h2>2. Encoding &amp; Channel Pipeline</h2>
+            <div class="pipeline">
+                <div class="pipe-stage">
+                    <div class="pipe-label">Input</div>
+                    <div class="pipe-value" id="pipe-input">-</div>
+                </div>
+                <div class="pipe-arrow">&rarr;</div>
+                <div class="pipe-stage">
+                    <div class="pipe-label">Info Bits</div>
+                    <div class="pipe-value" id="pipe-bits">-</div>
+                </div>
+                <div class="pipe-arrow">&rarr;</div>
+                <div class="pipe-stage">
+                    <div class="pipe-label">Encoder</div>
+                    <div class="pipe-value" id="pipe-encoded">-</div>
+                </div>
+                <div class="pipe-arrow">&rarr;</div>
+                <div class="pipe-stage highlight-noise">
+                    <div class="pipe-label">Channel + Noise</div>
+                    <div class="pipe-value" id="pipe-noise">-</div>
+                </div>
+                <div class="pipe-arrow">&rarr;</div>
+                <div class="pipe-stage highlight-fpga">
+                    <div class="pipe-label">FPGA Decoder</div>
+                    <div class="pipe-value" id="pipe-decoded">-</div>
+                </div>
+                <div class="pipe-arrow">&rarr;</div>
+                <div class="pipe-stage">
+                    <div class="pipe-label">Output</div>
+                    <div class="pipe-value" id="pipe-output">-</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Symbol Grid -->
+        <section class="card symbols-section">
+            <h2>3. Symbol View <span class="dim">(red = error injected)</span></h2>
+            <div id="symbol-grid" class="symbol-grid">
+                <p class="placeholder">Run a decode to see symbols...</p>
+            </div>
+        </section>
+
+        <!-- Trellis Diagram -->
+        <section class="card trellis-section" id="trellis-section" style="display:none">
+            <h2>3.5. Trellis Diagram <span class="dim" id="trellis-subtitle"></span></h2>
+            <div class="trellis-controls">
+                <label><input type="checkbox" id="trellis-animate" checked> Animate</label>
+                <button class="btn-secondary" id="trellis-zoom-in">Zoom +</button>
+                <button class="btn-secondary" id="trellis-zoom-out">Zoom -</button>
+                <span class="dim" id="trellis-info"></span>
+            </div>
+            <div class="trellis-container" id="trellis-container">
+                <canvas id="trellis-canvas"></canvas>
+            </div>
+            <div id="trellis-tooltip" class="trellis-tooltip"></div>
+        </section>
+
+        <!-- Results -->
+        <section class="card results-section">
+            <h2>4. Decoding Results</h2>
+            <div class="results-grid">
+                <div class="result-card">
+                    <div class="result-label">Decoded Text</div>
+                    <div class="result-value big" id="result-text">-</div>
+                </div>
+                <div class="result-card">
+                    <div class="result-label">Channel BER</div>
+                    <div class="result-value" id="result-channel-ber">-</div>
+                </div>
+                <div class="result-card">
+                    <div class="result-label">Decoded BER</div>
+                    <div class="result-value" id="result-decoded-ber">-</div>
+                </div>
+                <div class="result-card">
+                    <div class="result-label">Bit Errors</div>
+                    <div class="result-value" id="result-errors">-</div>
+                </div>
+                <div class="result-card">
+                    <div class="result-label">Errors Injected</div>
+                    <div class="result-value" id="result-injected">-</div>
+                </div>
+                <div class="result-card">
+                    <div class="result-label">Decode Time</div>
+                    <div class="result-value" id="result-time">-</div>
+                </div>
+            </div>
+            <div id="verdict" class="verdict"></div>
+        </section>
+
+        <!-- Activity Log -->
+        <section class="card activity-section">
+            <h2>5. Activity Log <span class="dim" id="queue-indicator"></span></h2>
+            <div id="activity-log" class="activity-log">
+                <p class="placeholder">No activity yet...</p>
+            </div>
+        </section>
+
+        <!-- Info Sidebar -->
+        <section class="card info-section">
+            <h2>How It Works</h2>
+            <div class="info-content">
+                <div class="info-block">
+                    <h3>Convolutional Encoding</h3>
+                    <p>Each input bit produces 2 output symbols using shift-register polynomials.
+                    This adds controlled redundancy (rate 1/2 = 50% overhead) that allows
+                    the decoder to correct errors.</p>
+                </div>
+                <div class="info-block">
+                    <h3>Viterbi Decoding</h3>
+                    <p>The Viterbi algorithm finds the most likely original sequence by
+                    tracking all possible encoder states simultaneously. Higher K means more
+                    states and stronger error correction, but more hardware resources.</p>
+                </div>
+                <div class="info-block">
+                    <h3>Why FPGA?</h3>
+                    <p>An FPGA evaluates all 2<sup>K-1</sup> states in parallel on every clock cycle.
+                    At K=7, that's 64 add-compare-select units running simultaneously &mdash;
+                    achieving constant-time decoding regardless of message length.
+                    Software must loop through states sequentially;
+                    the FPGA decodes in microseconds what takes Python tens of milliseconds.</p>
+                </div>
+                <div class="info-block">
+                    <h3>NASA Heritage</h3>
+                    <p>These exact polynomials (171<sub>8</sub>, 133<sub>8</sub>) were used on
+                    Voyager, Mars rovers, and deep-space missions. This FPGA implements
+                    the same algorithm in real hardware on a PYNQ-Z2 (Zynq ZC7020),
+                    connected live to this page via JTAG.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p id="footer-text">Viterbi Decoder &mdash; K=7, Rate-1/2, Traceback=42 &mdash; Running on PYNQ-Z2 (Zynq ZC7020)</p>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
