@@ -302,41 +302,6 @@ HELPERS_TCL = os.path.join(WEB_DIR, "fb_helpers.tcl")
 logger = logging.getLogger(__name__)
 
 
-FTDI_INSTANCE_ID = "USB\\VID_0403&PID_6010"
-
-
-def usb_power_cycle():
-    """Disable and re-enable the PYNQ-Z2 FTDI USB device via pnputil.
-    Requires the server to run as admin for this to work."""
-    import subprocess as _sp
-    try:
-        # Find matching device instance IDs
-        r = _sp.run(
-            ["powershell", "-Command",
-             f"Get-PnpDevice | Where-Object {{ $_.InstanceId -like '{FTDI_INSTANCE_ID}*' }}"
-             " | Select-Object -ExpandProperty InstanceId"],
-            capture_output=True, text=True, timeout=10)
-        ids = [line.strip() for line in r.stdout.strip().split("\n") if line.strip()]
-        if not ids:
-            logger.warning("No FTDI device found for power cycle")
-            return False
-
-        for dev_id in ids:
-            logger.info("Disabling USB device: %s", dev_id)
-            _sp.run(["pnputil", "/disable-device", dev_id],
-                    capture_output=True, timeout=10)
-        time.sleep(2)
-        for dev_id in ids:
-            logger.info("Enabling USB device: %s", dev_id)
-            _sp.run(["pnputil", "/enable-device", dev_id],
-                    capture_output=True, timeout=10)
-        time.sleep(5)
-        return True
-    except Exception as e:
-        logger.warning("USB power cycle failed: %s", e)
-        return False
-
-
 class FrameBufferXSDB:
     """Communicates with viterbi_axi_framebuf via a persistent XSDB session."""
 
@@ -367,130 +332,34 @@ class FrameBufferXSDB:
                 return candidate.replace("\\", "/")
         return None
 
-    def _init_arm(self, ps7_init):
-        """Target ARM core, reset, run ps7_init. Returns True if successful."""
-        try:
-            self.xsdb.execute(
-                'targets -set -filter {name =~ "*A9*#0"}', timeout=10)
-        except Exception:
-            logger.warning("ARM core #0 not found, trying system reset...")
-            try:
-                self.xsdb.execute(
-                    'targets -set -filter {name =~ "xc7z020*"}', timeout=10)
-                self.xsdb.execute('rst -system', timeout=15)
-                self.xsdb.execute('after 2000', timeout=10)
-                self.xsdb.execute(
-                    'targets -set -filter {name =~ "*A9*#0"}', timeout=10)
-            except Exception as e2:
-                logger.error("ARM core unreachable after system reset: %s", e2)
-                return False
-
-        self.xsdb.execute('catch {stop}', timeout=10)
-        self.xsdb.execute('after 200', timeout=10)
-        self.xsdb.execute('rst -processor', timeout=10)
-        self.xsdb.execute('after 500', timeout=10)
-
-        if ps7_init:
-            self.xsdb.execute(f'source {{{ps7_init}}}', timeout=15)
-            self.xsdb.execute('ps7_init', timeout=15)
-            self.xsdb.execute('ps7_post_config', timeout=15)
-
-        self.xsdb.execute('after 500', timeout=10)
-        return True
-
-    def _verify_fb(self):
-        """Read STATUS register. Returns True if frame buffer responds."""
-        try:
-            result = self.xsdb.execute('puts [fb_ping]', timeout=10)
-            val = result.strip()
-            logger.info("FB_STATUS: %s", val)
-            return len(val) > 0 and val != ""
-        except Exception:
-            return False
-
     def program(self, bit_path_override=None):
-        """Program FPGA and initialize PS7 via persistent session.
-        Retries with system reset if ARM core is unreachable."""
+        """Program PL + init PS7 via the fb_program TCL proc (every step checked).
+        Retries once on a transient failure. Never issues rst -system, which
+        leaves the DAP unusable until a physical power cycle."""
         actual_bit = bit_path_override or BIT_FILE
         if not os.path.exists(actual_bit):
             return False, f"Bitstream not found: {actual_bit}"
 
-        ps7_init = self._find_ps7_init()
+        ps7_init = self._find_ps7_init() or ""
         bit_path = actual_bit.replace("\\", "/")
 
+        last = ""
         for attempt in range(2):
             try:
-                # Program FPGA fabric
-                self.xsdb.execute(
-                    'targets -set -filter {name =~ "xc7z020*"}', timeout=10)
-                self.xsdb.execute(
-                    f'fpga -file {{{bit_path}}}', timeout=30)
-                self.xsdb.execute('after 1000', timeout=10)
-
-                # Initialize ARM + PS7
-                if not self._init_arm(ps7_init):
-                    if attempt == 0:
-                        logger.warning("ARM init failed, retrying...")
-                        continue
-                    self.programmed = False
-                    return False, "ARM core unreachable (try power-cycling the board)"
-
-                # Verify frame buffer responds
-                if self._verify_fb():
-                    self.programmed = True
-                    return True, "FPGA programmed successfully"
-
-                # FB not responding — retry with system reset
-                if attempt == 0:
-                    logger.warning(
-                        "Frame buffer not responding, retrying with system reset...")
-                    try:
-                        self.xsdb.execute(
-                            'targets -set -filter {name =~ "xc7z020*"}',
-                            timeout=10)
-                        self.xsdb.execute('rst -system', timeout=15)
-                        self.xsdb.execute('after 3000', timeout=10)
-                    except Exception:
-                        pass
-                    continue
-
-                # Second attempt also failed — try USB power cycle
-                if attempt == 1:
-                    logger.warning("Attempting USB power cycle as last resort...")
-                    if usb_power_cycle():
-                        # Reconnect XSDB after USB reset
-                        try:
-                            self.xsdb.close()
-                            self.xsdb.start()
-                            continue  # will exit loop, fall through below
-                        except Exception as e3:
-                            logger.error("XSDB reconnect after USB reset failed: %s", e3)
-                self.programmed = False
-                return False, "Frame buffer not responding after programming"
-
+                last = self.xsdb.execute(
+                    f"puts [fb_program {{{bit_path}}} {{{ps7_init}}}]",
+                    timeout=90).strip()
             except Exception as e:
-                if attempt == 0:
-                    logger.warning("Program attempt %d failed: %s", attempt, e)
-                    continue
-                logger.error("Program failed: %s", e)
-                self.programmed = False
-                return False, f"Program failed: {e}"
-
-        # Third attempt after USB power cycle
-        try:
-            self.xsdb.execute(
-                'targets -set -filter {name =~ "xc7z020*"}', timeout=10)
-            self.xsdb.execute(
-                f'fpga -file {{{bit_path}}}', timeout=30)
-            self.xsdb.execute('after 1000', timeout=10)
-            if self._init_arm(ps7_init) and self._verify_fb():
+                last = f"FAIL xsdb: {e}"
+            logger.info("fb_program attempt %d: %s", attempt + 1, last)
+            if last.startswith("OK"):
                 self.programmed = True
-                return True, "FPGA programmed (after USB power cycle)"
-        except Exception as e:
-            logger.error("Final program attempt failed: %s", e)
-
+                return True, "FPGA programmed successfully"
+            if "no_arm" in last:
+                break  # needs a physical power cycle; retrying makes it worse
         self.programmed = False
-        return False, "Programming failed after all recovery attempts"
+        msg = last.splitlines()[-1] if last else "unknown error"
+        return False, f"Programming failed: {msg}"
 
     def decode_frame(self, input_bytes):
         """Write frame to buffer, trigger, read output via fb_decode."""

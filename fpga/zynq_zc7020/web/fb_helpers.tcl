@@ -29,6 +29,49 @@ proc fb_ping {} {
 }
 
 # -----------------------------------------------------------------------------
+# fb_program {bit_path ps7_init_path}
+#   Program PL, init PS7, verify frame buffer. Every step is checked.
+#   Returns "OK <status>" or "FAIL <step>: <message>".
+#   NOTE: never issues rst -system on the xc7z020 target -- that leaves the
+#   DAP in "APB AP transaction error" until the board is power cycled.
+# -----------------------------------------------------------------------------
+proc fb_arm_present {} {
+    return [expr {[catch {targets -set -filter {name =~ "*A9*#0"}}] == 0}]
+}
+
+proc fb_program {bit_path ps7_init_path} {
+    if {![fb_arm_present]} {
+        return "FAIL no_arm: ARM core not visible on JTAG (power-cycle the board)"
+    }
+    if {[catch {targets -set -filter {name =~ "xc7z020*"}} e]} {
+        return "FAIL target_pl: $e"
+    }
+    if {[catch {fpga -file $bit_path} e]} {
+        return "FAIL fpga: $e"
+    }
+    after 1000
+    if {![fb_arm_present]} {
+        return "FAIL no_arm_after_fpga: ARM core vanished after programming PL"
+    }
+    catch {stop}
+    after 200
+    if {[catch {rst -processor} e]} {
+        return "FAIL rst_processor: $e"
+    }
+    after 500
+    if {$ps7_init_path ne ""} {
+        if {[catch {source $ps7_init_path} e]} { return "FAIL source_ps7_init: $e" }
+        if {[catch {ps7_init} e]} { return "FAIL ps7_init: $e" }
+        if {[catch {ps7_post_config} e]} { return "FAIL ps7_post_config: $e" }
+    }
+    after 500
+    if {[catch {fb_ping} v]} {
+        return "FAIL fb_ping: $v"
+    }
+    return "OK $v"
+}
+
+# -----------------------------------------------------------------------------
 # fb_decode {frame_len word_list}
 #   frame_len  - number of input bytes (1-256)
 #   word_list  - TCL list of 32-bit words (decimal), written to INPUT_BUF
