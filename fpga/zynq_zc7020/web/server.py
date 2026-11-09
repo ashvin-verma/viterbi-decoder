@@ -29,6 +29,8 @@ import threading
 import queue as queue_mod
 from collections import deque, OrderedDict
 import json
+import re
+import urllib.error
 from flask import Flask, render_template, jsonify, request
 from xsdb_session import PersistentXSDB
 from ber_theory import theory_curves, ebn0_to_p
@@ -372,6 +374,10 @@ class FrameBufferXSDB:
         )
         self.programmed = False
 
+    @property
+    def alive(self):
+        return self.xsdb.alive
+
     def start(self):
         """Start the persistent XSDB session (connect + source helpers)."""
         self.xsdb.start()
@@ -523,6 +529,120 @@ class FrameBufferXSDB:
         try:
             result = self.xsdb.execute('puts [fb_ping]', timeout=10)
             return True, result.strip()
+        except Exception as e:
+            return False, str(e)
+
+
+class FrameBufferNet:
+    """Same interface as FrameBufferXSDB, but talks to pynq_agent/agent.py on a
+    PYNQ-Z2 booted from SD (PYNQ Linux) over Ethernet. No JTAG involved."""
+
+    def __init__(self, url, token=""):
+        self.url = url.rstrip("/")
+        self.token = token
+        self.loaded_k = None
+
+    @property
+    def programmed(self):
+        """Ask the agent what is actually loaded: the board can be reprogrammed
+        or rebooted independently of this server (unlike a JTAG session)."""
+        if self.loaded_k is None:
+            return False
+        try:
+            return self._call("/ping", timeout=5).get("k") == self.loaded_k
+        except Exception:
+            return False
+
+    @programmed.setter
+    def programmed(self, value):
+        if not value:
+            self.loaded_k = None
+
+    @property
+    def alive(self):
+        return self.ping()[0]
+
+    def start(self):
+        ok, msg = self.ping()
+        logger.info("PYNQ agent %s: %s", self.url, "reachable" if ok else msg)
+
+    def close(self):
+        pass
+
+    def _call(self, path, payload=None, timeout=30):
+        import urllib.request
+        data = None if payload is None else json.dumps(payload).encode()
+        req = urllib.request.Request(self.url + path, data=data, method="POST" if data else "GET",
+                                     headers={"Content-Type": "application/json",
+                                              "X-Agent-Token": self.token})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            try:
+                msg = json.loads(e.read()).get("error", str(e))
+            except Exception:
+                msg = str(e)
+            raise RuntimeError(msg) from None
+
+    def program(self, bit_path_override=None):
+        m = re.search(r"_k(\d+)\.bit$", bit_path_override or BIT_FILE)
+        k = int(m.group(1)) if m else 7
+        try:
+            r = self._call("/program", {"k": k}, timeout=60)
+        except Exception as e:
+            self.loaded_k = None
+            logger.info("agent program K=%d: FAIL %s", k, e)
+            return False, f"Programming failed: {e}"
+        logger.info("agent program K=%d: %s", k, r.get("message"))
+        self.loaded_k = k
+        return True, "FPGA programmed successfully"
+
+    def decode_frame(self, input_bytes):
+        n = len(input_bytes)
+        if n > 256:
+            return None, "Frame too large (max 256 bytes)"
+        words = [int.from_bytes(bytes(input_bytes[i:i + 4]).ljust(4, b"\0"), "little")
+                 for i in range(0, n, 4)]
+        try:
+            r = self._call("/decode", {"frame_len": n, "words": words})
+        except Exception as e:
+            logger.error("decode_frame failed: %s", e)
+            return None, f"Agent error: {e}"
+        oc = r["out_count"]
+        out = b"".join(int(w).to_bytes(4, "little") for w in r["words"])[:oc]
+        return list(out), f"OK ({oc} bytes)"
+
+    def hw_config(self):
+        try:
+            v = int(self._call("/hwconfig", timeout=10)["value"])
+        except Exception:
+            return None
+        if (v >> 30) != 1:
+            return None
+        return {"k": v & 0xF, "d": (v >> 4) & 0xFF,
+                "g0": (v >> 12) & 0x1FF, "g1": (v >> 21) & 0x1FF}
+
+    def read_trellis(self, read_pm):
+        r = self._call("/trellis", {"read_pm": bool(read_pm)}, timeout=60)
+        return r["entries"], r["steps"], r["pm"], r["sv"], r["bs"]
+
+    def ber_point(self, thresh, max_errs, timeout_ms, seed):
+        vals = self._call("/ber_point", {"thresh": thresh, "maxerrs": max_errs,
+                                         "timeout_ms": timeout_ms, "seed": seed},
+                          timeout=timeout_ms / 1000 + 30)["values"]
+        st = vals[0]
+
+        def u64(i):
+            return vals[1 + i] | (vals[2 + i] << 32)
+        return {"status": st, "lanes": (st >> 8) & 0xFF, "k": (st >> 16) & 0xF,
+                "bits": u64(0), "errors": u64(2), "flips": u64(4),
+                "channel_bits": u64(6), "cycles": u64(8)}
+
+    def ping(self):
+        try:
+            r = self._call("/ping", timeout=5)
+            return True, str(r.get("status"))
         except Exception as e:
             return False, str(e)
 
@@ -838,8 +958,21 @@ def _fpga_worker():
 # Flask App
 # =========================================================================
 app = Flask(__name__)
-fpga = FrameBufferXSDB()
+
+# Hardware backend: PYNQ agent over Ethernet if --board URL / PYNQ_AGENT_URL
+# is given (board booted from SD), otherwise JTAG via XSDB (board in JTAG boot).
+PYNQ_AGENT_URL = os.environ.get("PYNQ_AGENT_URL", "")
+if "--board" in sys.argv:
+    PYNQ_AGENT_URL = sys.argv[sys.argv.index("--board") + 1]
+if PYNQ_AGENT_URL:
+    fpga = FrameBufferNet(PYNQ_AGENT_URL, os.environ.get("AGENT_TOKEN", ""))
+else:
+    fpga = FrameBufferXSDB()
 USE_FPGA = True
+
+
+def backend_available():
+    return bool(PYNQ_AGENT_URL) or os.path.exists(XSDB)
 
 # =========================================================================
 # Security: allowed origins for CORS (set via env or default)
@@ -974,7 +1107,7 @@ def api_status():
             "bitstream_found": os.path.exists(bf),
         }
     return jsonify({
-        "fpga_available": USE_FPGA and os.path.exists(XSDB),
+        "fpga_available": USE_FPGA and backend_available(),
         "bitstream_found": os.path.exists(bit_file_for_k(K)),
         "programmed": fpga.programmed if USE_FPGA else False,
         "mode": "FPGA" if USE_FPGA else "Software",
@@ -998,7 +1131,7 @@ def api_health():
     return jsonify({
         "ok": ok,
         "mode": "fpga",
-        "xsdb_alive": fpga.xsdb.alive,
+        "xsdb_alive": fpga.alive,
         "programmed": fpga.programmed,
         "status_register": status,
     })
@@ -1084,12 +1217,12 @@ def api_set_mode():
         return jsonify({"success": True, "mode": "Software",
                         "message": "Switched to software mode"})
     elif mode == "fpga":
-        if not os.path.exists(XSDB):
+        if not backend_available():
             return jsonify({"success": False, "mode": "Software",
                             "message": "XSDB not available"})
         USE_FPGA = True
         # Re-start XSDB session if needed
-        if not fpga.xsdb.alive:
+        if not fpga.alive:
             try:
                 fpga.start()
             except Exception as e:
@@ -1283,7 +1416,7 @@ if __name__ == "__main__":
         USE_FPGA = False
         print("Running in SOFTWARE-ONLY mode (no XSDB/FPGA)")
     else:
-        if not os.path.exists(XSDB):
+        if not backend_available():
             print(f"WARNING: XSDB not found at {XSDB}")
             print("Run with --no-fpga for software-only mode")
         else:
