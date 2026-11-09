@@ -47,7 +47,8 @@ def main():
 
     run(f"mkdir -p {REMOTE_DIR}; rm -f {REMOTE_DIR}/*.hwh")
     sftp = c.open_sftp()
-    files = [(os.path.join(HERE, "agent.py"), "agent.py")]
+    files = [(os.path.join(HERE, "agent.py"), "agent.py"),
+             (os.path.join(HERE, "fbloop.c"), "fbloop.c")]
     if not args.no_bits:
         for k in (3, 5, 7, 9):
             bit = os.path.join(PROJ, f"viterbi_ps7_k{k}.bit")
@@ -59,6 +60,10 @@ def main():
         sftp.put(src, f"{REMOTE_DIR}/{name}")
         print(f"  copied {name} ({os.path.getsize(src) // 1024} KB)")
     sftp.close()
+
+    # Build the C frame loop on the board (the agent falls back to Python without it).
+    out = run(f"cd {REMOTE_DIR} && gcc -O2 -Wall -shared -fPIC -o libfbloop.so fbloop.c && echo built")
+    print("  libfbloop.so:", "built" if out.endswith("built") else f"build failed: {out}")
 
     # Stop any previous agent, then start a new one in the background.
     run("pkill -f 'viterbi_agent/agent.py' || true", sudo=True)

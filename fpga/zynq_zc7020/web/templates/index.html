@@ -174,9 +174,9 @@
             <h2>Bulk Decode: an Image Through the FPGA</h2>
             <p class="dim">A grayscale image (up to 160&times;160) is split into frames of about 120 bytes,
             convolutionally encoded, hit with the channel error rate set above, and every frame is decoded
-            by the FPGA. The board's ARM core loops the frames through the decoder itself, so the time
-            below is measured on the board: the decoder plus about 2&nbsp;ms per frame for the ARM to load
-            and read the frame buffer. Network time is not included.</p>
+            by the FPGA. The board's ARM core loops the frames through the decoder with a small C routine,
+            so the time below is measured on the board: the decoder plus about 0.2&nbsp;ms per frame for the
+            ARM to load and read the frame buffer. Network time is not included.</p>
             <div class="image-controls">
                 <label class="btn-secondary file-btn">Choose image<input type="file" id="image-file" accept="image/*" hidden></label>
                 <button class="btn-secondary" id="image-sample">Use sample image</button>

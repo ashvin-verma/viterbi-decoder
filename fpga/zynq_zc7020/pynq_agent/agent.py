@@ -23,6 +23,7 @@ API (JSON over HTTP; every call is serialized -- the PL is one shared device):
 """
 import argparse
 import base64
+import ctypes
 import json
 import os
 import threading
@@ -105,9 +106,28 @@ class Board:
     def decode_many(self, frames):
         """Decode a list of frames (bytes) back to back. Returns the output
         bytes per frame and the board-side wall time of the whole loop, so
-        network latency never enters the throughput figure. Writes are single
-        32-bit stores (the AXI-Lite slave takes no bursts)."""
+        network latency never enters the throughput figure. Uses the C loop
+        (libfbloop.so) when available, else single 32-bit MMIO stores."""
         self._need()
+        if FBLOOP is not None:
+            return self._decode_many_c(frames)
+        return self._decode_many_py(frames)
+
+    def _decode_many_c(self, frames):
+        n = len(frames)
+        inbuf = ctypes.create_string_buffer(b"".join(f.ljust(256, b"\0") for f in frames), n * 256)
+        lens = (ctypes.c_int * n)(*[len(f) for f in frames])
+        outbuf = ctypes.create_string_buffer(n * 256)
+        olens = (ctypes.c_int * n)()
+        hw_s = ctypes.c_double()
+        done = FBLOOP.fb_decode_many(inbuf, lens, n, outbuf, olens,
+                                     ctypes.c_double(2.0), ctypes.byref(hw_s))
+        if done != n:
+            raise TimeoutError(f"frame {done} of {n} did not finish")
+        raw = outbuf.raw
+        return [raw[i * 256:i * 256 + olens[i]] for i in range(n)], hw_s.value * 1000
+
+    def _decode_many_py(self, frames):
         outs = []
         t0 = time.perf_counter()
         for fb in frames:
@@ -156,6 +176,25 @@ class Board:
         return [self.rd(b + 0x04)] + self.rd_words(b + 0x20, 10)
 
 
+def _load_fbloop():
+    """C frame loop built by deploy.py; None -> fall back to pynq.MMIO."""
+    path = os.path.join(HERE, "libfbloop.so")
+    if not os.path.exists(path):
+        return None
+    try:
+        lib = ctypes.CDLL(path)
+        lib.fb_decode_many.restype = ctypes.c_int
+        lib.fb_decode_many.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int,
+                                       ctypes.c_char_p, ctypes.POINTER(ctypes.c_int),
+                                       ctypes.c_double, ctypes.POINTER(ctypes.c_double)]
+        if lib.fb_open() != 0:
+            return None
+        return lib
+    except OSError:
+        return None
+
+
+FBLOOP = _load_fbloop()
 board = Board()
 
 
@@ -242,7 +281,8 @@ def main():
         board.program(args.program)
     srv = HTTPServer((args.host, args.port), Handler)
     srv.token = os.environ.get("AGENT_TOKEN", "")
-    print(f"viterbi agent on {args.host}:{args.port} (K={board.k})", flush=True)
+    print(f"viterbi agent on {args.host}:{args.port} (K={board.k}, "
+          f"frame loop: {'C' if FBLOOP else 'Python'})", flush=True)
     srv.serve_forever()
 
 
