@@ -17,10 +17,12 @@ API (JSON over HTTP; every call is serialized -- the PL is one shared device):
     POST /program   {"k"}           -> {"ok", "message"}
     GET  /hwconfig                  -> {"value"}
     POST /decode    {"frame_len", "words": [u32...]} -> {"out_count", "words"}
+    POST /decode_many {"frames": [base64...]} -> {"outputs": [base64...], "hw_ms"}
     POST /trellis   {"read_pm"}     -> {"entries", "steps", "pm", "sv", "bs"}
     POST /ber_point {"thresh", "maxerrs", "timeout_ms", "seed"} -> {"values": [11 x u32]}
 """
 import argparse
+import base64
 import json
 import os
 import threading
@@ -31,7 +33,8 @@ FB_BASE = 0x43C00000
 FB_SIZE = 0x40000          # 256 KB window (see scripts/update_bd_256k.tcl)
 FCLK0_MHZ = 50
 HERE = os.path.dirname(os.path.abspath(__file__))
-MAX_BODY = 64 * 1024
+MAX_BODY = 4 * 1024 * 1024
+MAX_FRAMES = 2000
 
 
 class Board:
@@ -98,6 +101,30 @@ class Board:
         status = self.rd(0x004)
         out_count = (status >> 8) & 0xFF
         return out_count, self.rd_words(0x800, (out_count + 3) // 4)
+
+    def decode_many(self, frames):
+        """Decode a list of frames (bytes) back to back. Returns the output
+        bytes per frame and the board-side wall time of the whole loop, so
+        network latency never enters the throughput figure. Writes are single
+        32-bit stores (the AXI-Lite slave takes no bursts)."""
+        self._need()
+        outs = []
+        t0 = time.perf_counter()
+        for fb in frames:
+            n = len(fb)
+            fb = fb + b"\0" * (-n % 4)
+            self.wr(0x008, n)
+            for i in range(0, len(fb), 4):
+                self.mmio.write(0x400 + i, int.from_bytes(fb[i:i + 4], "little"))
+            self.wr(0x000, 1)
+            t1 = time.perf_counter()
+            while not (self.rd(0x004) & 0x2):
+                if time.perf_counter() - t1 > 2.0:
+                    raise TimeoutError("frame decode did not finish")
+            oc = (self.rd(0x004) >> 8) & 0xFF
+            words = self.rd_words(0x800, (oc + 3) // 4)
+            outs.append(b"".join(w.to_bytes(4, "little") for w in words)[:oc])
+        return outs, (time.perf_counter() - t0) * 1000
 
     def trellis(self, read_pm):
         self._need()
@@ -178,6 +205,13 @@ class Handler(BaseHTTPRequestHandler):
                     words = [int(w) for w in req["words"]][:64]
                     oc, out = board.decode(int(req["frame_len"]), words)
                     return self._send(200, {"out_count": oc, "words": out})
+                if method == "POST" and path == "/decode_many":
+                    frames = [base64.b64decode(f) for f in req["frames"]][:MAX_FRAMES]
+                    if any(len(f) > 256 for f in frames):
+                        raise ValueError("frame larger than 256 bytes")
+                    outs, hw_ms = board.decode_many(frames)
+                    return self._send(200, {"outputs": [base64.b64encode(o).decode() for o in outs],
+                                            "hw_ms": hw_ms})
                 if method == "POST" and path == "/trellis":
                     return self._send(200, board.trellis(bool(req.get("read_pm"))))
                 if method == "POST" and path == "/ber_point":

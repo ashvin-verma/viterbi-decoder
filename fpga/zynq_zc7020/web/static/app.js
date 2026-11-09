@@ -25,16 +25,35 @@ errorSlider.addEventListener("input", () => {
     errorValue.textContent = errorSlider.value + "%";
 });
 
-// Enter key sends
+// Ctrl/Cmd+Enter sends (plain Enter makes a new line in the message box)
 messageInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") runDecode();
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) runDecode();
 });
+
+const K_DEPTH = {3: 12, 5: 24, 7: 42, 9: 60};
+
+// Message bytes per frame-buffer load (256 bytes = 1024 symbols, which also
+// carry the K-1 tail and D-1 flush symbols). Mirrors frame_payload_bytes().
+function framePayloadBytes(k) {
+    const flushBytes = Math.ceil((K_DEPTH[k] - 1) / 4);
+    return Math.floor(((256 - flushBytes) * 4 - (k - 1)) / 8);
+}
+
+function updateMsgMeta() {
+    const n = messageInput.value.length;
+    const k = parseInt(kSelect.value);
+    const frames = Math.max(1, Math.ceil(n / framePayloadBytes(k)));
+    document.getElementById("msg-meta").textContent =
+        `${n} / 2000 characters · ${frames} frame${frames > 1 ? "s" : ""} on the FPGA at K=${k} ` +
+        `(${framePayloadBytes(k)} characters per frame) · Ctrl+Enter to decode`;
+}
+messageInput.addEventListener("input", updateMsgMeta);
 
 // K selector — no longer triggers switch_k, just selects for next decode
 kSelect.addEventListener("change", () => {
     const k = parseInt(kSelect.value);
-    const cfg = {3: {d: 12}, 5: {d: 24}, 7: {d: 42}, 9: {d: 60}};
-    updateKDisplay(k, cfg[k] ? cfg[k].d : "?", "");
+    updateKDisplay(k, K_DEPTH[k] || "?", "");
+    updateMsgMeta();
 });
 
 // =========================================================================
@@ -152,7 +171,7 @@ async function programFPGA() {
 // =========================================================================
 // Poll job status (FPGA async mode)
 // =========================================================================
-async function pollJob(jobId) {
+async function pollJob(jobId, btn = sendBtn) {
     const POLL_MS = 500;
     const MAX_POLLS = 120;  // 60s max
 
@@ -163,15 +182,17 @@ async function pollJob(jobId) {
 
             // Update status bar with job progress
             if (data.status === "queued") {
-                sendBtn.textContent = `Queued (#${data.position})...`;
+                btn.textContent = `Queued (#${data.position})...`;
                 statusText.textContent = `Queue position: ${data.position} of ${data.queue_depth + 1}`;
             } else if (data.status === "programming") {
-                sendBtn.textContent = `Programming K=${data.k}...`;
+                btn.textContent = `Programming K=${data.k}...`;
                 statusText.textContent = `Programming FPGA for K=${data.k}...`;
                 statusIndicator.className = "indicator warn";
             } else if (data.status === "decoding") {
-                sendBtn.textContent = "Decoding...";
-                statusText.textContent = `FPGA decoding (K=${data.k})...`;
+                btn.textContent = "Decoding...";
+                const pr = data.progress;
+                statusText.textContent = `FPGA decoding (K=${data.k})` +
+                    (pr && pr.total > 1 ? ` — ${pr.done + 1} of ${pr.total}` : "") + "...";
             } else if (data.status === "done") {
                 statusIndicator.className = "indicator on";
                 statusText.textContent = `FPGA Ready (K=${data.k} loaded)`;
@@ -252,15 +273,37 @@ async function runDecode() {
 // =========================================================================
 // Update pipeline visualization
 // =========================================================================
+function clip(s, n) {
+    return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
 function updatePipeline(data) {
-    document.getElementById("pipe-input").textContent = data.input_text;
+    document.getElementById("pipe-input").textContent = clip(data.input_text, 24);
     document.getElementById("pipe-bits").textContent = data.info_bits + " bits";
     document.getElementById("pipe-encoded").textContent = data.num_symbols + " syms";
     document.getElementById("pipe-noise").textContent =
         data.num_errors_injected + " errors";
     document.getElementById("pipe-decoded").textContent =
-        data.decode_method + " " + data.decode_time_ms + "ms";
-    document.getElementById("pipe-output").textContent = data.decoded_text;
+        `${data.decode_method} ${data.n_frames || 1} frame${data.n_frames > 1 ? "s" : ""}`;
+    document.getElementById("pipe-output").textContent = clip(data.decoded_text, 24);
+}
+
+// Decoded text with every character that differs from the original marked.
+// Unprintable bytes (bit errors can produce them) are shown as a middle dot.
+function diffHtml(orig, dec) {
+    let html = "";
+    for (let i = 0; i < dec.length; i++) {
+        let c = dec[i];
+        const code = c.charCodeAt(0);
+        const shown = (code < 32 && c !== "\n") || code === 127 || code === 0xFFFD ? "·" : c;
+        html += c === orig[i] ? escapeHtml(shown)
+            : `<mark class="bad" title="sent '${escapeHtml(orig[i] || "")}'">${escapeHtml(shown)}</mark>`;
+    }
+    return html;
+}
+
+function fmtMs(ms) {
+    return ms >= 100 ? Math.round(ms) + " ms" : ms.toFixed(1) + " ms";
 }
 
 // =========================================================================
@@ -272,8 +315,10 @@ function updateSymbolGrid(data) {
 
     const symLabels = ["00", "01", "10", "11"];
     const errorSet = new Set(data.error_positions);
+    const SHOW = 600;   // long messages: the grid shows the first 600 symbols
+    const n = Math.min(SHOW, data.noisy_symbols.length);
 
-    for (let i = 0; i < data.noisy_symbols.length; i++) {
+    for (let i = 0; i < n; i++) {
         const cell = document.createElement("div");
         cell.className = "sym-cell " + (errorSet.has(i) ? "error" : "clean");
         cell.textContent = symLabels[data.noisy_symbols[i]];
@@ -283,13 +328,25 @@ function updateSymbolGrid(data) {
                 : "");
         grid.appendChild(cell);
     }
+    if (data.noisy_symbols.length > SHOW) {
+        const more = document.createElement("p");
+        more.className = "dim symbol-more";
+        more.textContent = `… first ${SHOW} of ${data.noisy_symbols.length} symbols shown ` +
+            `(${data.num_errors_injected} hit by the channel in total).`;
+        grid.appendChild(more);
+    }
 }
 
 // =========================================================================
 // Update results
 // =========================================================================
 function updateResults(data) {
-    document.getElementById("result-text").textContent = data.decoded_text;
+    document.getElementById("result-text").innerHTML = diffHtml(data.input_text, data.decoded_text);
+    const unc = document.getElementById("result-uncoded");
+    unc.textContent = data.uncoded_bit_errors !== undefined
+        ? `${data.uncoded_bit_errors} bit errors` : "-";
+    unc.title = "The same message sent without the convolutional code, " +
+        "with the same per-bit flip probability";
     document.getElementById("result-channel-ber").textContent =
         data.channel_ber + "%";
     document.getElementById("result-decoded-ber").textContent =
@@ -299,7 +356,7 @@ function updateResults(data) {
     document.getElementById("result-injected").textContent =
         data.num_errors_injected + " / " + data.num_symbols;
     document.getElementById("result-time").textContent =
-        data.decode_time_ms + " ms";
+        data.hw_ms !== undefined ? fmtMs(data.hw_ms) : data.decode_time_ms + " ms";
 
     const berEl = document.getElementById("result-decoded-ber");
     berEl.style.color = data.decoded_ber === 0 ? "var(--success)"
@@ -324,8 +381,6 @@ function updateResults(data) {
             `DECODER OVERWHELMED - ${data.bit_errors} bit errors remain (error rate too high)`;
     }
 
-    const textEl = document.getElementById("result-text");
-    textEl.style.color = data.bit_errors === 0 ? "var(--success)" : "var(--error)";
 }
 
 // =========================================================================
@@ -452,7 +507,8 @@ function updateTrellis(data) {
 
     const T = data.trellis;
     const D = T.traceback_depth || 0;
-    trellisSubtitle.textContent = `(${T.n_states} states x ${T.n_timesteps} steps)`;
+    trellisSubtitle.textContent = `(${T.n_states} states x ${T.n_timesteps} steps` +
+        (T.truncated ? `, first ${T.n_info_bits} message bits` : "") + ")";
     trellisInfo.textContent = `K=${data.k}, traceback depth ${D || "?"}`;
 
     const hw = T.source === "FPGA";
@@ -464,7 +520,9 @@ function updateTrellis(data) {
         trellisVerify.textContent = ok
             ? `✓ ${T.n_timesteps * T.n_states} add-compare-select results recorded by the chip. ` +
               `Replaying the hardware's ${T.replay_checked} traceback windows from these survivor bits ` +
-              `reproduces every bit the FPGA emitted.`
+              `reproduces every bit the FPGA emitted.` +
+              (T.truncated ? ` (Long messages: the chip re-decodes the first ${T.n_info_bits} ` +
+                             `bits as their own frame so the whole trellis fits the capture RAM.)` : "")
             : `⚠ ${T.replay_mismatches} of ${T.replay_checked} replayed traceback windows ` +
               `disagree with the FPGA output.`;
     } else {
@@ -746,7 +804,8 @@ function describeStep(T, t) {
     const i = t - D + 1;
     const bit = w[w.length - 1].s & 1;
     let what;
-    if (i < lastResult.info_bits) {
+    const nInfo = T.n_info_bits !== undefined ? T.n_info_bits : lastResult.info_bits;
+    if (i < nInfo) {
         const ch = lastResult.input_text[Math.floor(i / 8)] || "?";
         what = `message bit ${i} ('${ch}', bit ${7 - (i % 8)})`;
     } else {
@@ -1245,8 +1304,236 @@ berRunBtn.addEventListener("click", startBerSweep);
 kSelect.addEventListener("change", () => fetchBer(parseInt(kSelect.value)));
 
 // =========================================================================
+// Shared: submit an async job and wait for its result
+// =========================================================================
+async function submitJob(url, body, btn, busyLabel) {
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = busyLabel;
+    try {
+        const resp = await fetch(API_BASE + url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        if (data.error) { alert(data.error); return null; }
+        const result = data.async ? await pollJob(data.job_id, btn) : data;
+        fetchActivity();
+        return result;
+    } catch (e) {
+        alert("Error: " + e.message);
+        return null;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = label;
+    }
+}
+
+function statesOf(k) { return Math.pow(2, k - 1); }
+
+function kbps(r) {
+    return r.throughput_kbps ? `${r.throughput_kbps >= 1000
+        ? (r.throughput_kbps / 1000).toFixed(2) + " Mbit/s" : r.throughput_kbps.toFixed(0) + " kbit/s"}` : "-";
+}
+
+// =========================================================================
+// Compare K mode (text)
+// =========================================================================
+const compareBtn = document.getElementById("compare-btn");
+const compareSection = document.getElementById("compare-section");
+
+async function runCompare() {
+    const message = messageInput.value.trim();
+    if (!message) return;
+    const result = await submitJob("/api/decode", {
+        message, error_rate: parseInt(errorSlider.value), compare: true
+    }, compareBtn, "Comparing...");
+    if (result && result.type === "compare") renderCompare(result);
+}
+
+function renderCompare(res) {
+    compareSection.style.display = "";
+    const pct = (res.error_rate * 100).toFixed(0);
+    document.getElementById("compare-subtitle").textContent =
+        `(${res.info_bits} message bits, ${pct}% of symbols hit)`;
+    const rows = res.runs.map(r => `
+        <tr>
+            <th scope="row">K=${r.k}<span class="dim"> · ${statesOf(r.k)} states</span></th>
+            <td class="cmp-text">${diffHtml(res.input_text, r.decoded_text)}</td>
+            <td class="num ${r.bit_errors === 0 ? "good" : ""}">${r.bit_errors}</td>
+            <td class="num">${r.decoded_ber}%</td>
+            <td class="num">${r.num_errors_injected}</td>
+            <td class="num">${r.n_frames}</td>
+            <td class="num">${fmtMs(r.hw_ms)}</td>
+            <td class="num">${kbps(r)}</td>
+        </tr>`).join("");
+    const unc = `
+        <tr class="uncoded">
+            <th scope="row">No coding</th>
+            <td class="cmp-text">${diffHtml(res.input_text, res.uncoded_text)}</td>
+            <td class="num">${res.uncoded_bit_errors}</td>
+            <td class="num">${(100 * res.uncoded_bit_errors / res.info_bits).toFixed(3)}%</td>
+            <td class="num">-</td><td class="num">-</td><td class="num">-</td><td class="num">-</td>
+        </tr>`;
+    document.getElementById("compare-table").innerHTML = `
+        <thead><tr><th>Code</th><th>Decoded text</th><th class="num">Bit errors</th>
+        <th class="num">BER</th><th class="num">Symbols hit</th><th class="num">Frames</th>
+        <th class="num">FPGA time</th><th class="num">Throughput</th></tr></thead>
+        <tbody>${rows}${unc}</tbody>`;
+    compareSection.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+compareBtn.addEventListener("click", runCompare);
+
+// =========================================================================
+// Bulk decode: image
+// =========================================================================
+const IMG_MAX = 160;
+const imageRun = document.getElementById("image-run");
+const imageStatus = document.getElementById("image-status");
+const imageGrid = document.getElementById("image-grid");
+let imagePixels = null;   // {w, h, data: Uint8Array grayscale}
+
+function toGray(canvas) {
+    const { width: w, height: h } = canvas;
+    const rgba = canvas.getContext("2d").getImageData(0, 0, w, h).data;
+    const g = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+        g[i] = Math.round(0.299 * rgba[4 * i] + 0.587 * rgba[4 * i + 1] + 0.114 * rgba[4 * i + 2]);
+    }
+    return { w, h, data: g };
+}
+
+function setImage(px, label) {
+    imagePixels = px;
+    imageRun.disabled = false;
+    imageStatus.textContent = `${label}: ${px.w}×${px.h} = ${(px.w * px.h / 1024).toFixed(1)} KB, ` +
+        `${(px.w * px.h * 8).toLocaleString()} bits`;
+    imageGrid.innerHTML = "";
+    imageGrid.appendChild(imageTile(px.data, px.w, px.h, "Original", ""));
+    document.getElementById("image-stats").innerHTML = "";
+}
+
+function loadImageFile(file) {
+    const img = new Image();
+    img.onload = () => {
+        const s = Math.min(1, IMG_MAX / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(img.width * s));
+        c.height = Math.max(1, Math.round(img.height * s));
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        setImage(toGray(c), file.name);
+        URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(file);
+}
+
+function sampleImage() {
+    // Drawn locally: gradients, shapes and text, so bit errors are easy to see.
+    const c = document.createElement("canvas");
+    c.width = IMG_MAX; c.height = 120;
+    const ctx = c.getContext("2d");
+    const grad = ctx.createLinearGradient(0, 0, c.width, c.height);
+    grad.addColorStop(0, "#f2f2f2"); grad.addColorStop(1, "#5a5a5a");
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(118, 40, 26, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(118, 40, 14, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
+    for (let x = 8; x < 80; x += 8) { ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, 60); ctx.stroke(); }
+    ctx.fillStyle = "#000"; ctx.font = "bold 22px sans-serif"; ctx.fillText("VITERBI", 10, 92);
+    ctx.font = "12px monospace"; ctx.fillText("rate 1/2 hard decision", 10, 110);
+    setImage(toGray(c), "Sample image");
+}
+
+function b64FromBytes(u8) {
+    let s = "";
+    for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+    return btoa(s);
+}
+
+function bytesFromB64(b64) {
+    const s = atob(b64);
+    const u8 = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
+    return u8;
+}
+
+function imageTile(gray, w, h, title, caption) {
+    const fig = document.createElement("figure");
+    fig.className = "image-tile";
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d");
+    const im = ctx.createImageData(w, h);
+    for (let i = 0; i < w * h; i++) {
+        im.data[4 * i] = im.data[4 * i + 1] = im.data[4 * i + 2] = gray[i];
+        im.data[4 * i + 3] = 255;
+    }
+    ctx.putImageData(im, 0, 0);
+    c.setAttribute("role", "img");
+    c.setAttribute("aria-label", `${title}. ${caption}`);
+    fig.appendChild(c);
+    const cap = document.createElement("figcaption");
+    cap.innerHTML = `<b>${escapeHtml(title)}</b><br><span class="dim">${escapeHtml(caption)}</span>`;
+    fig.appendChild(cap);
+    return fig;
+}
+
+function pixelsWrong(a, b) {
+    let n = 0;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) n++;
+    return n;
+}
+
+async function runImage() {
+    if (!imagePixels) return;
+    const compare = document.getElementById("image-compare").checked;
+    const result = await submitJob("/api/decode_image", {
+        width: imagePixels.w, height: imagePixels.h, pixels: b64FromBytes(imagePixels.data),
+        error_rate: parseInt(errorSlider.value), k: parseInt(kSelect.value), compare
+    }, imageRun, "Decoding...");
+    if (result) renderImageResult(result);
+}
+
+function renderImageResult(res) {
+    const { width: w, height: h } = res;
+    const orig = imagePixels.data;
+    const npx = w * h;
+    imageGrid.innerHTML = "";
+    imageGrid.appendChild(imageTile(orig, w, h, "Original", `${w}×${h}, ${npx * 8} bits`));
+    const raw = bytesFromB64(res.uncoded_b64);
+    imageGrid.appendChild(imageTile(raw, w, h, "Sent without coding",
+        `${res.uncoded_bit_errors} bit errors, ${pixelsWrong(orig, raw)} pixels wrong`));
+    for (const r of res.runs) {
+        const dec = bytesFromB64(r.decoded_b64);
+        imageGrid.appendChild(imageTile(dec, w, h, `FPGA decoded, K=${r.k}`,
+            `${r.bit_errors} bit errors, ${pixelsWrong(orig, dec)} pixels wrong`));
+    }
+    const pct = (res.error_rate * 100).toFixed(0);
+    const total = res.runs.reduce((a, r) => a + r.hw_ms, 0);
+    const frames = res.runs.reduce((a, r) => a + r.n_frames, 0);
+    const card = (label, value) =>
+        `<div class="result-card"><div class="result-label">${label}</div><div class="result-value">${value}</div></div>`;
+    const one = res.runs.length === 1 ? res.runs[0] : null;
+    document.getElementById("image-stats").innerHTML =
+        card("Channel", `${pct}% of symbols hit`) +
+        card("Frames decoded", frames.toLocaleString()) +
+        card("FPGA time", fmtMs(total)) +
+        (one ? card("Throughput", kbps(one)) + card("Bits through FPGA", res.info_bits.toLocaleString())
+             : res.runs.map(r => card(`K=${r.k} throughput`, kbps(r))).join(""));
+}
+
+document.getElementById("image-file").addEventListener("change", (e) => {
+    if (e.target.files && e.target.files[0]) loadImageFile(e.target.files[0]);
+});
+document.getElementById("image-sample").addEventListener("click", sampleImage);
+imageRun.addEventListener("click", runImage);
+
+// =========================================================================
 // Initialize — wire up event listeners (no inline onclick)
 // =========================================================================
+updateMsgMeta();
 sendBtn.addEventListener("click", runDecode);
 document.getElementById("run-once-btn").addEventListener("click", runDecode);
 document.getElementById("program-btn").addEventListener("click", programFPGA);

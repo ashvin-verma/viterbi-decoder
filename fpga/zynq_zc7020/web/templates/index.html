@@ -22,10 +22,11 @@
         <section class="card input-section">
             <h2>1. Input Message</h2>
             <div class="input-row">
-                <input type="text" id="message-input" placeholder="Type a message (max 24 chars)"
-                       maxlength="24" value="Hello World">
+                <textarea id="message-input" rows="3" maxlength="2000"
+                          placeholder="Type a message (up to 2000 ASCII characters)">Hello World</textarea>
                 <button id="send-btn">Decode</button>
             </div>
+            <p class="dim msg-meta" id="msg-meta"></p>
             <div class="slider-row">
                 <label for="error-slider">Channel Error Rate:</label>
                 <input type="range" id="error-slider" min="0" max="50" value="10" step="1">
@@ -46,6 +47,7 @@
                 <span class="dim">(visualize decoder internals)</span>
             </div>
             <div class="button-row">
+                <button class="btn-secondary" id="compare-btn">Compare K=3/5/7/9</button>
                 <button class="btn-secondary" id="run-once-btn">Run Once</button>
                 <button class="btn-secondary" id="program-btn">Program FPGA</button>
                 <button class="btn-secondary" id="mode-toggle-btn">Switch to Software</button>
@@ -127,9 +129,9 @@
         <section class="card results-section">
             <h2>4. Decoding Results</h2>
             <div class="results-grid">
-                <div class="result-card">
-                    <div class="result-label">Decoded Text</div>
-                    <div class="result-value big" id="result-text">-</div>
+                <div class="result-card wide">
+                    <div class="result-label">Decoded Text <span class="dim">(wrong characters highlighted)</span></div>
+                    <div class="result-value decoded-text" id="result-text">-</div>
                 </div>
                 <div class="result-card">
                     <div class="result-label">Channel BER</div>
@@ -148,11 +150,42 @@
                     <div class="result-value" id="result-injected">-</div>
                 </div>
                 <div class="result-card">
-                    <div class="result-label">Decode Time</div>
+                    <div class="result-label">Without coding</div>
+                    <div class="result-value" id="result-uncoded">-</div>
+                </div>
+                <div class="result-card">
+                    <div class="result-label">FPGA Time</div>
                     <div class="result-value" id="result-time">-</div>
                 </div>
             </div>
             <div id="verdict" class="verdict"></div>
+        </section>
+
+        <!-- Compare K -->
+        <section class="card compare-section" id="compare-section" style="display:none">
+            <h2>K Comparison <span class="dim" id="compare-subtitle"></span></h2>
+            <p class="dim compare-note">Same message, same channel error rate, same random seed for the
+            channel. Each K's bitstream is loaded onto the FPGA in turn (about half a second each).</p>
+            <div class="compare-wrap"><table class="compare-table" id="compare-table"></table></div>
+        </section>
+
+        <!-- Bulk decode: image -->
+        <section class="card image-section" id="image-section">
+            <h2>Bulk Decode: an Image Through the FPGA</h2>
+            <p class="dim">A grayscale image (up to 160&times;160) is split into frames of about 120 bytes,
+            convolutionally encoded, hit with the channel error rate set above, and every frame is decoded
+            by the FPGA. The board's ARM core loops the frames through the decoder itself, so the time
+            below is measured on the board: the decoder plus about 2&nbsp;ms per frame for the ARM to load
+            and read the frame buffer. Network time is not included.</p>
+            <div class="image-controls">
+                <label class="btn-secondary file-btn">Choose image<input type="file" id="image-file" accept="image/*" hidden></label>
+                <button class="btn-secondary" id="image-sample">Use sample image</button>
+                <label class="dim"><input type="checkbox" id="image-compare"> Compare all K</label>
+                <button class="btn-primary-sm" id="image-run" disabled>Decode image on FPGA</button>
+                <span class="dim" id="image-status"></span>
+            </div>
+            <div class="image-grid" id="image-grid"></div>
+            <div class="results-grid image-stats" id="image-stats"></div>
         </section>
 
         <!-- Live BER curves -->

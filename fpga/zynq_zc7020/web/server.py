@@ -28,6 +28,7 @@ import logging
 import threading
 import queue as queue_mod
 from collections import deque, OrderedDict
+import base64
 import json
 import re
 import urllib.error
@@ -100,21 +101,75 @@ def _parity(x):
     return p
 
 
+_ENC_TABLES = {}
+
+
+def _enc_table(g0, g1, m):
+    """Output symbol for every encoder register value {state, bit_in}."""
+    key = (g0, g1, m)
+    t = _ENC_TABLES.get(key)
+    if t is None:
+        t = [(_parity(r & g0) << 1) | _parity(r & g1) for r in range(1 << (m + 1))]
+        _ENC_TABLES[key] = t
+    return t
+
+
 def conv_encode(info_bits, g0=None, g1=None, m=None):
     """Rate-1/2 convolutional encoder. Appends m tail zeros."""
     g0 = g0 if g0 is not None else G0
     g1 = g1 if g1 is not None else G1
     m = m if m is not None else M
+    table = _enc_table(g0, g1, m)
     mask = (1 << m) - 1
     state = 0
     symbols = []
     for bit in list(info_bits) + [0] * m:
-        reg = (bit & 1) | (state << 1)
-        c0 = _parity(reg & g0)
-        c1 = _parity(reg & g1)
-        symbols.append((c0 << 1) | c1)
-        state = ((state << 1) | (bit & 1)) & mask
+        bit &= 1
+        symbols.append(table[bit | (state << 1)])
+        state = ((state << 1) | bit) & mask
     return symbols
+
+
+FRAME_MAX_BYTES = 256   # frame buffer input capacity (1024 symbols)
+
+
+def frame_payload_bytes(k):
+    """Message bytes that fit one frame-buffer load for this K: the frame also
+    carries the K-1 tail symbols and D-1 flush symbols."""
+    d, m = K_CONFIGS[k]["D"], k - 1
+    flush_bytes = (d - 1 + 3) // 4
+    return ((FRAME_MAX_BYTES - flush_bytes) * 4 - m) // 8
+
+
+def channel_flip(symbols, error_rate, rng):
+    """Hard-decision channel: each symbol is hit with probability error_rate,
+    flipping one of its two coded bits. Returns (noisy, hit_positions)."""
+    noisy = list(symbols)
+    positions = []
+    rand, randint = rng.random, rng.randint
+    for i in range(len(noisy)):
+        if rand() < error_rate:
+            noisy[i] ^= 1 << randint(0, 1)
+            positions.append(i)
+    return noisy, positions
+
+
+def flip_bits_uncoded(payload, p, rng):
+    """Same bit-flip probability, no coding: what the receiver would get if
+    the raw bits were sent instead."""
+    out = bytearray(payload)
+    rand = rng.random
+    for i in range(len(out)):
+        mask = 0
+        for j in range(8):
+            if rand() < p:
+                mask |= 1 << j
+        out[i] ^= mask
+    return bytes(out)
+
+
+def count_bit_errors(a, b):
+    return sum(bin(x ^ y).count("1") for x, y in zip(a, b))
 
 
 def pack_symbols_to_bytes(symbols):
@@ -477,6 +532,17 @@ class FrameBufferXSDB:
 
         return decoded_bytes, f"OK ({out_count} bytes)"
 
+    def decode_frames(self, frames):
+        """One fb_decode per frame over JTAG (slow, but same results)."""
+        outs = []
+        t0 = time.perf_counter()
+        for f in frames:
+            out, msg = self.decode_frame(f)
+            if out is None:
+                raise RuntimeError(msg)
+            outs.append(out)
+        return outs, (time.perf_counter() - t0) * 1000
+
     def hw_config(self):
         """Decode the HW_CONFIG register: {K, D, G0, G1} baked into the
         bitstream, or None for bitstreams that predate it."""
@@ -613,6 +679,20 @@ class FrameBufferNet:
         out = b"".join(int(w).to_bytes(4, "little") for w in r["words"])[:oc]
         return list(out), f"OK ({oc} bytes)"
 
+    def decode_frames(self, frames):
+        """Decode many frames in one round trip; the board loops them through
+        the frame buffer. Returns (outputs, board-side hardware loop ms)."""
+        import base64
+        outs, hw_ms = [], 0.0
+        for i in range(0, len(frames), 1000):
+            chunk = frames[i:i + 1000]
+            r = self._call("/decode_many",
+                           {"frames": [base64.b64encode(bytes(f)).decode() for f in chunk]},
+                           timeout=120)
+            outs += [list(base64.b64decode(o)) for o in r["outputs"]]
+            hw_ms += r["hw_ms"]
+        return outs, hw_ms
+
     def hw_config(self):
         try:
             v = int(self._call("/hwconfig", timeout=10)["value"])
@@ -667,20 +747,35 @@ def log_activity(event, detail=""):
 # Async Job Queue (FPGA is a single shared resource)
 # =========================================================================
 class DecodeJob:
-    __slots__ = ("id", "k", "message", "error_rate", "trellis", "status",
-                 "position", "result", "created", "kind")
+    """Text or image payload decoded at one K, or at several K ("compare")
+    with the same channel seed."""
+    __slots__ = ("id", "k", "ks", "message", "payload", "payload_type", "width",
+                 "height", "error_rate", "trellis", "seed", "status", "position",
+                 "result", "created", "kind", "progress")
 
-    def __init__(self, job_id, k, message, error_rate, trellis=False):
+    def __init__(self, job_id, ks, error_rate, message=None, payload=None,
+                 width=0, height=0, trellis=False):
         self.kind = "decode"
         self.id = job_id
-        self.k = k
+        self.ks = list(ks)
+        self.k = self.ks[0]
         self.message = message
+        self.payload = payload
+        self.payload_type = "image" if payload is not None else "text"
+        self.width, self.height = width, height
         self.error_rate = error_rate
         self.trellis = trellis
+        self.seed = random.getrandbits(32)
         self.status = "queued"
         self.position = 0
         self.result = None
         self.created = time.time()
+        self.progress = {"done": 0, "total": len(self.ks)}
+
+
+MAX_TEXT_CHARS = 2000
+TRELLIS_MAX_SYMS = 200   # 24 chars + tail: keeps K=9 within the capture BRAM
+MAX_IMAGE_PIXELS = 160 * 160
 
 
 class BerJob:
@@ -808,123 +903,224 @@ def _hw_trellis_or_software(fpga_ref, k, d, g0, g1, m, noisy_symbols,
     return tr
 
 
-def _run_decode_pipeline(k, message, error_rate, use_fpga_hw, fpga_ref,
-                         include_trellis=False):
-    """Full encode -> noise -> decode pipeline. Returns result dict.
-    Thread-safe: uses only local K params, no globals."""
+def _code_and_decode(k, payload, error_rate, fpga_ref, seed, keep_symbols=False):
+    """Split payload into frame-buffer-sized chunks, encode each (terminated),
+    pass it through the channel, decode all frames on the FPGA (or in
+    software if fpga_ref is None). Same seed -> same channel randomness."""
     cfg = K_CONFIGS[k]
     g0, g1, m, d = cfg["G0"], cfg["G1"], k - 1, cfg["D"]
+    rng = random.Random(seed)
+    per = frame_payload_bytes(k)
+    flush = pack_symbols_to_bytes([0] * (d - 1))
 
-    msg_bytes = list(message.encode("ascii"))
-    info_bits = bytes_to_bits_msb(msg_bytes)
-    num_info_bits = len(info_bits)
-    symbols = conv_encode(info_bits, g0, g1, m)
-    noisy_symbols, error_positions = inject_errors(symbols, error_rate)
+    frames, frame_bits, frame_noisy = [], [], []
+    all_syms, all_noisy, all_pos = [], [], []
+    n_syms = n_hits = 0
+    for off in range(0, len(payload), per):
+        bits = bytes_to_bits_msb(payload[off:off + per])
+        syms = conv_encode(bits, g0, g1, m)
+        noisy, pos = channel_flip(syms, error_rate, rng)
+        if keep_symbols:
+            base = len(all_syms)
+            all_syms += syms
+            all_noisy += noisy
+            all_pos += [base + p for p in pos]
+        n_syms += len(syms)
+        n_hits += len(pos)
+        frames.append(pack_symbols_to_bytes(noisy) + flush)
+        frame_bits.append(len(bits))
+        frame_noisy.append(noisy)
 
-    noisy_data_bytes = pack_symbols_to_bytes(noisy_symbols)
-    flush_bytes = pack_symbols_to_bytes([0] * (d - 1))
-    all_input_bytes = noisy_data_bytes + flush_bytes
-    total_syms = len(all_input_bytes) * 4
-    total_dec_bits = total_syms - d
-
-    trellis_data = None
-    t_start = time.time()
-    if use_fpga_hw:
-        decoded_bytes, status_msg = fpga_ref.decode_frame(all_input_bytes)
-        decode_method = "FPGA"
-        t_decode = time.time() - t_start
-        if include_trellis:
-            trellis_data = _hw_trellis_or_software(
-                fpga_ref, k, d, g0, g1, m, noisy_symbols, total_syms,
-                decoded_bytes)
+    t0 = time.perf_counter()
+    if fpga_ref is not None:
+        outs, hw_ms = fpga_ref.decode_frames(frames)
+        method = "FPGA"
     else:
-        all_noisy_syms = noisy_symbols + [0] * (d - 1)
-        if include_trellis:
-            decoded_bits_sw, trellis_data = software_decode_with_trellis(
-                all_noisy_syms, g0, g1, m)
-            trellis_data["source"] = "Software"
-            trellis_data["n_data_steps"] = len(noisy_symbols)
-            trellis_data["traceback_depth"] = d
-        else:
-            decoded_bits_sw = software_decode(all_noisy_syms, g0, g1, m)
-        decoded_bits_sw = decoded_bits_sw[:num_info_bits]
-        while len(decoded_bits_sw) % 8 != 0:
-            decoded_bits_sw.append(0)
-        decoded_bytes = []
-        for i in range(0, len(decoded_bits_sw), 8):
-            byte_val = 0
-            for j in range(8):
-                if i + j < len(decoded_bits_sw):
-                    byte_val |= (decoded_bits_sw[i + j] << j)
-            decoded_bytes.append(byte_val)
-        decode_method = "Software"
-        t_decode = time.time() - t_start
-    t_elapsed = t_decode
+        outs = []
+        for noisy in frame_noisy:
+            dec = software_decode(noisy + [0] * (d - 1), g0, g1, m)
+            outs.append(bytes_to_lsb_first(dec))
+        hw_ms = (time.perf_counter() - t0) * 1000
+        method = "Software"
+    wall_ms = (time.perf_counter() - t0) * 1000
 
-    if decoded_bytes:
-        decoded_bits = unpack_decoded_bytes(decoded_bytes)
-        recon_bits = decoded_bits[:num_info_bits]
-        recon_byte_list = bits_to_bytes_msb(recon_bits)
-        decoded_text = bytes(recon_byte_list[:len(msg_bytes)]).decode(
-            "ascii", errors="replace")
-        n_cmp = min(num_info_bits, len(decoded_bits))
-        bit_errors = sum(a != b for a, b in
-                         zip(info_bits[:n_cmp], decoded_bits[:n_cmp]))
-    else:
-        decoded_text = ""
-        bit_errors = num_info_bits
-        decoded_bits = []
-
-    channel_ber = len(error_positions) / len(symbols) if symbols else 0
-    decoded_ber = bit_errors / num_info_bits if num_info_bits > 0 else 0
-
+    decoded = bytearray()
+    for out, nb in zip(outs, frame_bits):
+        bits = unpack_decoded_bytes(out)[:nb]
+        bits += [0] * (nb - len(bits))
+        decoded += bytes(bits_to_bytes_msb(bits))
+    decoded = bytes(decoded[:len(payload)])
+    info_bits = len(payload) * 8
+    bit_errors = count_bit_errors(payload, decoded)
     return {
-        "input_text": message,
-        "info_bits": num_info_bits,
-        "num_symbols": len(symbols),
-        "encoded_symbols": symbols,
-        "noisy_symbols": noisy_symbols,
-        "error_positions": error_positions,
-        "num_errors_injected": len(error_positions),
-        "decoded_text": decoded_text,
-        "bit_errors": bit_errors,
-        "channel_ber": round(channel_ber * 100, 1),
-        "decoded_ber": round(decoded_ber * 100, 1),
-        "decode_time_ms": round(t_elapsed * 1000, 1),
-        "decode_method": decode_method,
-        "num_input_bytes": len(all_input_bytes),
-        "num_output_bytes": len(decoded_bytes) if decoded_bytes else 0,
         "k": k,
-        "trellis": trellis_data,
+        "decoded": decoded,
+        "info_bits": info_bits,
+        "bit_errors": bit_errors,
+        "num_symbols": n_syms,
+        "num_errors_injected": n_hits,
+        "channel_ber": round(100 * n_hits / n_syms, 2) if n_syms else 0,
+        "decoded_ber": round(100 * bit_errors / info_bits, 3) if info_bits else 0,
+        "n_frames": len(frames),
+        "frame_payload_bytes": per,
+        "hw_ms": round(hw_ms, 2),
+        "decode_time_ms": round(wall_ms, 1),
+        "throughput_kbps": round(info_bits / hw_ms, 1) if hw_ms > 0 else None,
+        "decode_method": method,
+        "num_input_bytes": sum(len(f) for f in frames),
+        # internal (not JSON-serialised as-is)
+        "_frames": frames, "_frame_noisy": frame_noisy, "_frame_bits": frame_bits,
+        "_syms": all_syms, "_noisy": all_noisy, "_pos": all_pos,
     }
 
 
-def _fpga_worker():
-    """Background thread: processes FPGA decode jobs one at a time."""
+def bytes_to_lsb_first(bits):
+    """Pack decoded bits LSB-first, like the hardware bit packer."""
+    out = []
+    for i in range(0, len(bits), 8):
+        v = 0
+        for j, b in enumerate(bits[i:i + 8]):
+            v |= (b & 1) << j
+        out.append(v)
+    return out
+
+
+def _public(r):
+    return {k: v for k, v in r.items() if not k.startswith("_") and k != "decoded"}
+
+
+def _run_decode_pipeline(k, message, error_rate, use_fpga_hw, fpga_ref,
+                         include_trellis=False, seed=None):
+    """Text message: encode -> channel -> decode (multi-frame for long text).
+    The trellis, when requested, is the first frame's."""
+    cfg = K_CONFIGS[k]
+    g0, g1, m, d = cfg["G0"], cfg["G1"], k - 1, cfg["D"]
+    payload = message.encode("ascii")
+    seed = seed if seed is not None else random.getrandbits(32)
+    r = _code_and_decode(k, payload, error_rate, fpga_ref if use_fpga_hw else None,
+                         seed, keep_symbols=True)
+
+    trellis_data = None
+    if include_trellis:
+        # The trellis covers the first TRELLIS_MAX_SYMS received symbols (the
+        # whole message up to 24 chars), re-decoded on the chip as their own
+        # frame so the capture BRAM holds exactly what is drawn.
+        noisy0, nbits0 = r["_frame_noisy"][0], r["_frame_bits"][0]
+        noisy_t = noisy0[:TRELLIS_MAX_SYMS]
+        tframe = pack_symbols_to_bytes(noisy_t) + pack_symbols_to_bytes([0] * (d - 1))
+        if use_fpga_hw:
+            dec_t, _ = fpga_ref.decode_frame(tframe)
+            trellis_data = _hw_trellis_or_software(
+                fpga_ref, k, d, g0, g1, m, noisy_t, len(tframe) * 4, dec_t)
+        else:
+            _, trellis_data = software_decode_with_trellis(noisy_t + [0] * (d - 1), g0, g1, m)
+            trellis_data["source"] = "Software"
+            trellis_data["n_data_steps"] = len(noisy_t)
+            trellis_data["traceback_depth"] = d
+        trellis_data["n_info_bits"] = min(nbits0, len(noisy_t))
+        trellis_data["truncated"] = len(noisy0) > len(noisy_t)
+
+    out = _public(r)
+    out.update({
+        "type": "text",
+        "input_text": message,
+        "decoded_text": r["decoded"].decode("ascii", errors="replace"),
+        "encoded_symbols": r["_syms"],
+        "noisy_symbols": r["_noisy"],
+        "error_positions": r["_pos"],
+        "num_output_bytes": len(r["decoded"]),
+        "seed": seed,
+        "trellis": trellis_data,
+    })
+    return out
+
+
+def _run_image_pipeline(k, pixels, width, height, error_rate, fpga_ref, seed):
+    """Grayscale image bytes through the coded link, plus the same bits sent
+    uncoded at the same bit-flip probability for comparison."""
+    r = _code_and_decode(k, pixels, error_rate, fpga_ref, seed)
+    out = _public(r)
+    out.update({"type": "image", "width": width, "height": height,
+                "decoded_b64": base64.b64encode(r["decoded"]).decode(), "seed": seed})
+    return out
+
+
+def _uncoded_reference(payload, error_rate, seed):
+    # A symbol hit flips one of its 2 coded bits -> per-bit probability error_rate/2.
+    raw = flip_bits_uncoded(payload, error_rate / 2, random.Random(seed ^ 0x5A5A5A5A))
+    return raw, count_bit_errors(payload, raw)
+
+
+def _ensure_k(job, k):
+    """Load K's bitstream if it is not the one on the board."""
     global _current_fpga_k
+    if k == _current_fpga_k and fpga.programmed:
+        return
+    bf = bit_file_for_k(k)
+    if not os.path.exists(bf):
+        raise RuntimeError(f"No bitstream for K={k}")
+    job.status = "programming"
+    job.k = k
+    log_activity("programming", f"K={k}")
+    ok, msg = fpga.program(bf)
+    if not ok:
+        raise RuntimeError(f"Programming failed: {msg}")
+    _current_fpga_k = k
+    log_activity("programmed", f"K={k}")
+
+
+def _run_job(job):
+    """Decode / image / compare jobs. Compare runs every K on the same
+    payload with the same channel seed."""
+    seed = job.seed
+    ks = job.ks
+    runs = []
+    for k in ks:
+        _ensure_k(job, k)
+        job.status = "decoding"
+        job.k = k
+        if job.payload_type == "image":
+            res = _run_image_pipeline(k, job.payload, job.width, job.height,
+                                      job.error_rate, fpga, seed)
+        else:
+            res = _run_decode_pipeline(k, job.message, job.error_rate, True, fpga,
+                                       include_trellis=job.trellis and len(ks) == 1,
+                                       seed=seed)
+        runs.append(res)
+        job.progress = {"done": len(runs), "total": len(ks)}
+        log_activity("decoded", f"K={k}, {res['bit_errors']} bit errors in "
+                     f"{res['info_bits']} bits, {res['n_frames']} frames, "
+                     f"{res['hw_ms']:.0f} ms on FPGA")
+
+    payload = job.payload if job.payload_type == "image" else job.message.encode("ascii")
+    raw, raw_errs = _uncoded_reference(payload, job.error_rate, seed)
+    if len(ks) == 1 and job.payload_type == "text":
+        result = runs[0]
+        result["uncoded_bit_errors"] = raw_errs
+        return result
+    for res in runs:   # compare table doesn't draw symbols; keep the payload small
+        for key in ("encoded_symbols", "noisy_symbols", "error_positions", "trellis"):
+            res.pop(key, None)
+    result = {"type": "compare" if len(ks) > 1 else "image",
+              "payload_type": job.payload_type, "runs": runs,
+              "error_rate": job.error_rate,
+              "uncoded_bit_errors": raw_errs, "info_bits": len(payload) * 8}
+    if job.payload_type == "image":
+        result.update({"width": job.width, "height": job.height,
+                       "uncoded_b64": base64.b64encode(raw).decode()})
+    else:
+        result["input_text"] = job.message
+        result["uncoded_text"] = raw.decode("ascii", errors="replace")
+    return result
+
+
+def _fpga_worker():
+    """Background thread: processes FPGA jobs one at a time."""
     while True:
         job = _job_queue.get()
         try:
-            # Auto-program if K doesn't match or FPGA not yet programmed
-            if job.k != _current_fpga_k or not fpga.programmed:
-                bf = bit_file_for_k(job.k)
-                if not os.path.exists(bf):
-                    job.status = "error"
-                    job.result = {"error": f"No bitstream for K={job.k}"}
-                    log_activity("error", f"No bitstream for K={job.k}")
-                    continue
-                job.status = "programming"
-                log_activity("programming", f"K={job.k}")
-                success, msg = fpga.program(bf)
-                if not success:
-                    job.status = "error"
-                    job.result = {"error": f"Programming failed: {msg}"}
-                    log_activity("error", f"Program failed: {msg}")
-                    continue
-                _current_fpga_k = job.k
-                log_activity("programmed", f"K={job.k}")
-
             if job.kind == "ber":
+                _ensure_k(job, job.k)
                 job.status = "running"
                 log_activity("ber_sweep", f"K={job.k}, {len(job.points)} points")
                 _run_ber_sweep(job, fpga)
@@ -933,22 +1129,16 @@ def _fpga_worker():
                 total_bits = sum(pt["bits"] for pt in pts)
                 log_activity("ber_done", f"K={job.k}, {total_bits/1e6:.1f}M bits on FPGA")
                 continue
-
-            job.status = "decoding"
-            result = _run_decode_pipeline(
-                job.k, job.message, job.error_rate,
-                use_fpga_hw=True, fpga_ref=fpga,
-                include_trellis=job.trellis)
-            job.result = result
+            job.result = _run_job(job)
             job.status = "done"
-            log_activity("decoded",
-                         f"K={job.k}, {result['bit_errors']} errors,"
-                         f" {result['decode_time_ms']}ms, FPGA")
         except Exception as e:
+            logger.exception("job %s failed", job.id)
             job.status = "error"
             job.result = {"error": str(e)}
             log_activity("error", str(e))
         finally:
+            if job.kind != "ber":
+                job.payload = None  # free image bytes once processed
             _job_queue.task_done()
             with _jobs_lock:
                 _update_positions()
@@ -1056,6 +1246,8 @@ fpga_limiter = RateLimiter(rate=0.2, burst=2)
 general_limiter = RateLimiter(rate=5, burst=15)
 # BER sweeps hold the FPGA for ~25 s: 1 per minute per IP
 ber_limiter = RateLimiter(rate=1 / 60, burst=1)
+# Image / compare-all-K runs hold the FPGA for a few seconds
+bulk_limiter = RateLimiter(rate=1 / 15, burst=2)
 
 
 def get_client_ip():
@@ -1263,8 +1455,8 @@ def api_decode():
 
     if not message:
         return jsonify({"error": "Empty message"}), 400
-    if len(message) > 24:
-        return jsonify({"error": "Message too long (max 24 chars)"}), 400
+    if len(message) > MAX_TEXT_CHARS:
+        return jsonify({"error": f"Message too long (max {MAX_TEXT_CHARS} chars)"}), 400
 
     try:
         message.encode("ascii")
@@ -1272,22 +1464,20 @@ def api_decode():
         return jsonify({"error": "ASCII only"}), 400
 
     req_trellis = bool(data.get("trellis", False))
+    compare = bool(data.get("compare", False))
 
     # FPGA mode: submit to job queue (async)
     if USE_FPGA:
-        job_id = uuid.uuid4().hex[:12]
-        job = DecodeJob(job_id, req_k, message, error_rate, trellis=req_trellis)
-        with _jobs_lock:
-            _jobs[job_id] = job
-            job.position = _job_queue.qsize() + 1
-        _job_queue.put(job)
-        return jsonify({
-            "async": True,
-            "job_id": job_id,
-            "position": job.position,
-            "queue_depth": _job_queue.qsize(),
-            "status": "queued",
-        })
+        if compare and not bulk_limiter.allow(get_client_ip()):
+            return jsonify({"error": "Compare runs are limited to 2 per 30 s"}), 429
+        ks = sorted(K_CONFIGS) if compare else [req_k]
+        return _submit(DecodeJob(uuid.uuid4().hex[:12], ks, error_rate,
+                                 message=message, trellis=req_trellis))
+
+    if compare:
+        return jsonify({"error": "Compare mode needs the FPGA"}), 400
+    if len(message) > 240:
+        return jsonify({"error": "Software mode is limited to 240 chars"}), 400
 
     # Software mode: decode synchronously with per-request K
     result = _run_decode_pipeline(
@@ -1298,6 +1488,42 @@ def api_decode():
                  f"K={req_k}, {result['bit_errors']} errors,"
                  f" {result['decode_time_ms']}ms, SW")
     return jsonify(result)
+
+
+def _submit(job):
+    with _jobs_lock:
+        _jobs[job.id] = job
+        job.position = _job_queue.qsize() + 1
+    _job_queue.put(job)
+    return jsonify({"async": True, "job_id": job.id, "position": job.position,
+                    "queue_depth": _job_queue.qsize(), "status": "queued"})
+
+
+@app.route("/api/decode_image", methods=["POST"])
+def api_decode_image():
+    """Bulk decode: an 8-bit grayscale image (raw pixels, base64) is encoded,
+    sent through the channel and decoded frame by frame on the FPGA."""
+    if not bulk_limiter.allow(get_client_ip()):
+        return jsonify({"error": "Image runs are limited to 2 per 30 s"}), 429
+    if not USE_FPGA:
+        return jsonify({"error": "Image decode needs the FPGA"}), 400
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "No JSON body"}), 400
+    try:
+        w, h = int(data["width"]), int(data["height"])
+        pixels = base64.b64decode(data["pixels"], validate=True)
+        error_rate = max(0.0, min(100.0, float(data.get("error_rate", 0)))) / 100.0
+        req_k = int(data.get("k", K))
+    except Exception:
+        return jsonify({"error": "Invalid image request"}), 400
+    if not (1 <= w <= 160 and 1 <= h <= 160) or len(pixels) != w * h:
+        return jsonify({"error": "Image must be at most 160x160 grayscale"}), 400
+    if req_k not in K_CONFIGS:
+        return jsonify({"error": f"Invalid K={req_k}"}), 400
+    ks = sorted(K_CONFIGS) if data.get("compare") else [req_k]
+    return _submit(DecodeJob(uuid.uuid4().hex[:12], ks, error_rate,
+                             payload=pixels, width=w, height=h))
 
 
 @app.route("/api/job/<job_id>")
@@ -1317,6 +1543,9 @@ def api_job_status(job_id):
         "k": job.k,
     }
     resp["kind"] = job.kind
+    if job.kind == "decode":
+        resp["progress"] = job.progress
+        resp["ks"] = job.ks
     if job.status in ("done", "error") or job.kind == "ber":
         resp["result"] = job.result
     return jsonify(resp)
@@ -1410,7 +1639,7 @@ if __name__ == "__main__":
     )
 
     # Limit request body size (16 KB — decode payloads are tiny)
-    app.config["MAX_CONTENT_LENGTH"] = 16 * 1024
+    app.config["MAX_CONTENT_LENGTH"] = 64 * 1024   # 160x160 image as base64 ~34 KB
 
     if "--no-fpga" in sys.argv:
         USE_FPGA = False

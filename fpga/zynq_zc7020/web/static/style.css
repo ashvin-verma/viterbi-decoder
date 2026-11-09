@@ -124,6 +124,16 @@ main {
     border-color: var(--accent);
 }
 
+textarea#message-input {
+    resize: vertical;
+    min-height: 3.2rem;
+    line-height: 1.4;
+}
+
+.input-row #send-btn { align-self: flex-start; }
+
+.msg-meta { font-size: 0.8rem; margin: -0.25rem 0 0.75rem; }
+
 #send-btn {
     padding: 0.6rem 1.5rem;
     background: var(--accent);
@@ -349,6 +359,84 @@ main {
     color: var(--accent);
     word-break: break-all;
 }
+
+.result-card.wide { grid-column: 1 / -1; text-align: left; }
+
+.decoded-text {
+    font-size: 1rem;
+    font-weight: 500;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 14rem;
+    overflow-y: auto;
+    line-height: 1.45;
+}
+
+mark.bad {
+    background: #fde2df;
+    color: var(--error);
+    border-radius: 2px;
+    padding: 0 1px;
+    font-weight: 700;
+}
+
+.symbol-more { flex-basis: 100%; font-size: 0.8rem; margin-top: 0.4rem; }
+
+/* K comparison */
+.compare-note { font-size: 0.85rem; margin-bottom: 0.75rem; }
+.compare-wrap { overflow-x: auto; }
+.compare-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.compare-table th, .compare-table td {
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid var(--card-border);
+    text-align: left;
+    vertical-align: top;
+}
+.compare-table thead th {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    font-weight: 600;
+}
+.compare-table th[scope="row"] { white-space: nowrap; font-family: var(--font-mono); }
+.compare-table .num { text-align: right; font-family: var(--font-mono); white-space: nowrap; }
+.compare-table .num.good { color: var(--accent); font-weight: 700; }
+.compare-table .cmp-text {
+    font-family: var(--font-mono);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-width: 32rem;
+    min-width: 12rem;
+}
+.compare-table tr.uncoded { color: var(--text-dim); }
+
+/* Bulk image decode */
+.image-section > p.dim { font-size: 0.85rem; margin-bottom: 0.75rem; }
+.image-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+.file-btn { cursor: pointer; display: inline-block; }
+.image-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 0.9rem;
+    margin-bottom: 1rem;
+}
+.image-tile { margin: 0; text-align: center; font-size: 0.8rem; }
+.image-tile canvas {
+    width: 100%;
+    max-width: 320px;
+    image-rendering: pixelated;
+    border: 1px solid var(--card-border);
+    border-radius: 4px;
+    background: var(--bg);
+}
+.image-tile figcaption { margin-top: 0.3rem; line-height: 1.35; }
 
 .verdict {
     text-align: center;
