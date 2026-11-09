@@ -21,6 +21,15 @@ module tt_um_ashvin_viterbi #(
     input  wire       ena,      // always 1 when the design is powered, so you can ignore it
     input  wire       clk,      // clock
     input  wire       rst_n     // reset_n - low to reset
+`ifdef VITERBI_DBG
+    // FPGA-only debug taps for trellis capture (absent in the TT build)
+    , output wire         dbg_sweep
+    , output wire [K-2:0] dbg_idx
+    , output wire [7:0]   dbg_pm
+    , output wire         dbg_surv
+    , output wire         dbg_commit
+    , output wire [K-2:0] dbg_best
+`endif
 );
 
   // ---------------------------------------------------------------
@@ -53,7 +62,10 @@ module tt_um_ashvin_viterbi #(
     .RATE(RATE),
     .G0_OCT(G0_OCT),
     .G1_OCT(G1_OCT),
-    .G2_OCT(G2_OCT)
+    .G2_OCT(G2_OCT),
+    // Renormalize path metrics: 8-bit saturating metrics otherwise pin at 255
+    // after ~255 channel errors in a continuous stream (test_long_stream_metric_overflow)
+    .NORM(1)
   ) viterbi_core_inst (
     .clk           (clk),
     .rst           (rst_i),
@@ -63,6 +75,12 @@ module tt_um_ashvin_viterbi #(
     .dec_bit_valid (dec_bit_valid_i),
     .dec_bit       (dec_bit_i),
     .force_state0  (force_state0_i)
+`ifdef VITERBI_DBG
+    , .dbg_sweep (dbg_sweep), .dbg_idx (dbg_idx), .dbg_pm (dbg_pm)
+    , .dbg_surv  (dbg_surv),  .dbg_commit (dbg_commit), .dbg_best (dbg_best)
+`else
+    , .dbg_sweep (), .dbg_idx (), .dbg_pm (), .dbg_surv (), .dbg_commit (), .dbg_best ()
+`endif
   );
 
   // ---------------------------------------------------------------

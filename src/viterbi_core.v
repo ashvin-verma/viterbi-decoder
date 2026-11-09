@@ -7,7 +7,10 @@ module tt_um_viterbi_core #(
     parameter int RATE    = 2,
     parameter int G0_OCT  = 'o23,   // default (23,35) for K=5
     parameter int G1_OCT  = 'o35,
-    parameter int G2_OCT  = 'o0
+    parameter int G2_OCT  = 'o0,
+    // NORM=1: renormalize path metrics (subtract 2^(Wm-1) when every metric
+    // has its MSB set). Required for unbounded streaming; frames never hit it.
+    parameter int NORM    = 0
 )(
     input  wire         clk,
     input  wire         rst,
@@ -22,7 +25,15 @@ module tt_um_viterbi_core #(
     output wire         dec_bit,
 
     // Tail handling
-    input  wire         force_state0
+    input  wire         force_state0,
+
+    // Debug taps (trellis capture). Unused outputs are optimized away.
+    output wire         dbg_sweep,      // one ACS result per cycle while high
+    output wire [K-2:0] dbg_idx,        // destination state of this ACS
+    output wire [Wm-1:0] dbg_pm,        // new path metric for dbg_idx
+    output wire         dbg_surv,       // survivor decision (0=pred p0, 1=p1)
+    output wire         dbg_commit,     // end of one trellis step
+    output wire [K-2:0] dbg_best        // best (min-metric) state, valid at commit
 );
 
     localparam int M            = (K>1)?(K-1):1;
@@ -175,9 +186,19 @@ module tt_um_viterbi_core #(
         .rx_sym(rx_sym_q), .exp_sym0(exp0), .exp_sym1(exp1), .bm0(bm0), .bm1(bm1)
     );
 
+    // Optional renormalization: if the min metric of the bank we are reading
+    // has its MSB set, every entry does -> clearing MSB subtracts 2^(Wm-1).
+    logic norm_q;
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) norm_q <= 1'b0;
+        else if (state == ST_COMMIT) norm_q <= (NORM != 0) && best_metric[Wm-1];
+    end
+    wire [Wm-1:0] pm0_n = norm_q ? {1'b0, pm0[Wm-2:0]} : pm0;
+    wire [Wm-1:0] pm1_n = norm_q ? {1'b0, pm1[Wm-2:0]} : pm1;
+
     // Add-Compare-Select (saturating adds inside)
     acs_core #(.Wm(Wm), .Wb(Wb)) u_acs (
-        .pm0(pm0), .pm1(pm1), .bm0(bm0), .bm1(bm1), .pm_out(pm_out), .surv(surv_sel)
+        .pm0(pm0_n), .pm1(pm1_n), .bm0(bm0), .bm1(bm1), .pm_out(pm_out), .surv(surv_sel)
     );
 
     // Path-metric double buffer
@@ -251,6 +272,14 @@ module tt_um_viterbi_core #(
         .dec_bit_valid(dec_bit_valid),
         .dec_bit(dec_bit)
     );
+
+    // Debug taps
+    assign dbg_sweep  = (state == ST_SWEEP);
+    assign dbg_idx    = sweep_idx;
+    assign dbg_pm     = pm_out;
+    assign dbg_surv   = surv_sel;
+    assign dbg_commit = (state == ST_COMMIT);
+    assign dbg_best   = best_state;
 
 endmodule
 

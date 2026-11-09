@@ -1156,6 +1156,37 @@ async def test_minimum_frame_length(dut):
 
 
 @cocotb.test()
+async def test_long_stream_metric_overflow(dut):
+    """Stream far more channel errors than an 8-bit path metric can hold.
+
+    Path metrics grow by roughly one per channel error on the survivor path.
+    Without renormalization every metric saturates at 255 after a few hundred
+    errors and the decoder output degrades to coin flips. The tail of the
+    stream must decode as well as the head.
+    """
+    clock = Clock(dut.clk, 10, unit="ns")
+    cocotb.start_soon(clock.start())
+    await _reset(dut)
+
+    random.seed(9100)
+    N = 4000
+    info_bits = [random.randint(0, 1) for _ in range(N)]
+    # One flipped coded bit in ~8% of symbols -> ~320 channel errors total
+    inject = {i: random.randint(0, 1) for i in range(N) if random.random() < 0.08}
+
+    decoded = await _run_frame(dut, info_bits, inject_errors=inject)
+    assert len(decoded) >= N - 8, f"Only {len(decoded)} of {N} bits decoded"
+
+    seg = 1000
+    head = sum(decoded[i] != info_bits[i] for i in range(seg))
+    tail = sum(decoded[i] != info_bits[i] for i in range(N - seg, N))
+    dut._log.info(f"Long stream K={K}: {len(inject)} channel errors; "
+                  f"decoded errors head={head}/{seg} tail={tail}/{seg}")
+    # Saturated metrics give ~50% errors; a working decoder stays in the low %.
+    assert tail < 0.05 * seg, f"Tail decoded {tail}/{seg} wrong: path metrics overflowed?"
+
+
+@cocotb.test()
 async def test_continuous_streaming_no_reset(dut):
     """Send 10 frames back-to-back WITHOUT reset between them.
 
