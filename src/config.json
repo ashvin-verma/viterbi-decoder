@@ -34,7 +34,9 @@
   "//": "LibreLane 3 (ttsky26d) picks clkdlybuf4s25/dlymetal6s2s delay cells as fanout",
   "//": "buffers (~1 ns per stage at ss_100C), turning +5.75 ns setup slack into -3.5 ns.",
   "//": "Keep them out of the resizer's buffer choices; hold fixing can still use dlygate4sd*.",
-  "EXTRA_EXCLUDED_CELLS": ["sky130_fd_sc_hd__clkdlybuf4s*", "sky130_fd_sc_hd__dlymetal6s*"],
+  "//": "buf_1 is also excluded: once the delay cells are gone the resizer falls back to",
+  "//": "buf_1 for fanout trees (1.1-1.4 ns slew at ss_100C, ~5.8 ns on the worst path).",
+  "EXTRA_EXCLUDED_CELLS": ["sky130_fd_sc_hd__clkdlybuf4s*", "sky130_fd_sc_hd__dlymetal6s*", "sky130_fd_sc_hd__buf_1"],
 
   "//": "Configuration docs: https://librelane.readthedocs.io/en/latest/reference/configuration.html",
 
