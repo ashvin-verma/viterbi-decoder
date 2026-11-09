@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Viterbi Decoder FPGA Demo</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v={{ v }}">
     <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
 </head>
 <body>
@@ -37,7 +37,7 @@
                     <option value="3">K=3 (Minimal)</option>
                     <option value="5">K=5 (Moderate)</option>
                     <option value="7" selected>K=7 (NASA Standard)</option>
-                    <option value="9">K=9 (CCSDS, 256 states)</option>
+                    <option value="9">K=9 (IS-95/3GPP, 256 states)</option>
                 </select>
             </div>
             <div class="slider-row">
@@ -98,12 +98,24 @@
 
         <!-- Trellis Diagram -->
         <section class="card trellis-section" id="trellis-section" style="display:none">
-            <h2>3.5. Trellis Diagram <span class="dim" id="trellis-subtitle"></span></h2>
+            <h2>3.5. Trellis Diagram <span class="dim" id="trellis-subtitle"></span>
+                <span class="source-badge" id="trellis-source"></span></h2>
+            <p class="trellis-verify" id="trellis-verify"></p>
             <div class="trellis-controls">
-                <label><input type="checkbox" id="trellis-animate" checked> Animate</label>
+                <label><input type="checkbox" id="trellis-animate" checked> Animate path</label>
                 <button class="btn-secondary" id="trellis-zoom-in">Zoom +</button>
                 <button class="btn-secondary" id="trellis-zoom-out">Zoom -</button>
                 <span class="dim" id="trellis-info"></span>
+            </div>
+            <div class="trellis-step-row" id="trellis-step-row">
+                <button class="btn-secondary" id="trellis-play">&#9654; Play decoder</button>
+                <input type="range" id="trellis-step" min="0" max="0" value="0" aria-label="Trellis step">
+                <span class="trellis-step-info" id="trellis-step-info"></span>
+            </div>
+            <div class="trellis-legend">
+                <span><i class="lg lg-path"></i>decided path (bits the decoder emitted)</span>
+                <span><i class="lg lg-window"></i>traceback window at the selected step</span>
+                <span><i class="lg lg-flush"></i>flush symbols</span>
             </div>
             <div class="trellis-container" id="trellis-container">
                 <canvas id="trellis-canvas"></canvas>
@@ -143,6 +155,34 @@
             <div id="verdict" class="verdict"></div>
         </section>
 
+        <!-- Live BER curves -->
+        <section class="card ber-section" id="ber-section">
+            <h2>Live Error-Rate Curves <span class="dim" id="ber-subtitle">measured on the FPGA's on-chip tester</span></h2>
+            <div class="ber-controls">
+                <button id="ber-run" class="btn-primary-sm">Run sweep on FPGA</button>
+                <span class="dim" id="ber-status"></span>
+            </div>
+            <div class="ber-legend" id="ber-legend"></div>
+            <div class="ber-chart-wrap" id="ber-wrap">
+                <canvas id="ber-canvas" role="img" aria-label="Bit error rate versus Eb/N0"></canvas>
+            </div>
+            <div id="ber-tooltip" class="trellis-tooltip"></div>
+            <div class="results-grid ber-stats" id="ber-stats"></div>
+            <details class="ber-details">
+                <summary>Table view &amp; method</summary>
+                <table class="ber-table" id="ber-table"></table>
+                <p class="ber-method">Each point runs <span id="ber-lanes">N</span> copies of the decoder in
+                parallel inside the FPGA fabric. Every lane has a PRBS-31 data source, the convolutional
+                encoder, and a channel that flips each coded bit with probability
+                p&nbsp;=&nbsp;Q(&radic;(2&middot;R&middot;E<sub>b</sub>/N<sub>0</sub>)) using an
+                xorshift128 random generator. That is exactly what a hard-decision receiver sees
+                for BPSK over AWGN. Decoded bits are compared on-chip against the delayed source bits,
+                and 64-bit counters are read back over AXI. A point stops after 300 decoded errors or
+                3&nbsp;s. Theory curves are union bounds computed from each code's distance spectrum.
+                Points with zero errors are drawn as an upper limit at 1/N.</p>
+            </details>
+        </section>
+
         <!-- Activity Log -->
         <section class="card activity-section">
             <h2>5. Activity Log <span class="dim" id="queue-indicator"></span></h2>
@@ -169,18 +209,23 @@
                 </div>
                 <div class="info-block">
                     <h3>Why FPGA?</h3>
-                    <p>An FPGA evaluates all 2<sup>K-1</sup> states in parallel on every clock cycle.
-                    At K=7, that's 64 add-compare-select units running simultaneously &mdash;
-                    achieving constant-time decoding regardless of message length.
-                    Software must loop through states sequentially;
-                    the FPGA decodes in microseconds what takes Python tens of milliseconds.</p>
+                    <p>This decoder was designed for a Tiny Tapeout ASIC, where area is scarce.
+                    It uses a single add-compare-select unit that sweeps all
+                    2<sup>K-1</sup> states one per clock cycle, with a sliding-window
+                    traceback. On the FPGA the same RTL runs at 50&nbsp;MHz with fixed,
+                    cycle-exact timing. Because it is real hardware, it scales by replication:
+                    the error-rate tester runs several independent decoder lanes side by side
+                    and measures millions of bits per second, without the CPU touching a single bit.
+                    The trellis above is read straight out of block RAM that recorded every
+                    add-compare-select result as the chip computed it.</p>
                 </div>
                 <div class="info-block">
                     <h3>NASA Heritage</h3>
                     <p>These exact polynomials (171<sub>8</sub>, 133<sub>8</sub>) were used on
                     Voyager, Mars rovers, and deep-space missions. This FPGA implements
                     the same algorithm in real hardware on a PYNQ-Z2 (Zynq ZC7020),
-                    connected live to this page via JTAG.</p>
+                    connected live to this page via JTAG. K=9 (561<sub>8</sub>, 753<sub>8</sub>) is the
+                    rate-1/2 code from IS-95 CDMA and 3GPP.</p>
                 </div>
             </div>
         </section>
@@ -190,6 +235,6 @@
         <p id="footer-text">Viterbi Decoder &mdash; K=7, Rate-1/2, Traceback=42 &mdash; Running on PYNQ-Z2 (Zynq ZC7020)</p>
     </footer>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v={{ v }}"></script>
 </body>
 </html>

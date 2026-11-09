@@ -27,6 +27,11 @@
 `ifndef G1_SEL
   `define G1_SEL 91     // 0o133
 `endif
+`ifndef BER_LANES_SEL
+  `define BER_LANES_SEL 4
+`endif
+// NOTE: build with verilog_define VITERBI_DBG so project.v exposes the
+// trellis-capture taps (dbg_* ports).
 
 module top_ps7 (
     // =====================================================================
@@ -159,11 +164,27 @@ module top_ps7 (
     // =========================================================================
     // AXI-Lite Frame Buffer
     // =========================================================================
-    viterbi_axi_framebuf u_framebuf (
+    localparam [3:0] HWC_K  = `K_SEL;
+    localparam [7:0] HWC_D  = `D_TB_SEL;
+    localparam [8:0] HWC_G0 = `G0_SEL;
+    localparam [8:0] HWC_G1 = `G1_SEL;
+
+    wire        dbg_sweep, dbg_surv, dbg_commit;
+    wire [`K_SEL-2:0] dbg_idx, dbg_best;
+    wire [7:0]  dbg_pm;
+    wire [7:0]  dbg_idx8  = dbg_idx;    // zero-extend to 8 bits
+    wire [7:0]  dbg_best8 = dbg_best;
+    wire        ber_wr_en;
+    wire [4:0]  ber_wr_addr, ber_rd_addr;
+    wire [31:0] ber_wr_data, ber_rd_data;
+
+    viterbi_axi_framebuf #(
+        .HW_CONFIG ({2'b01, HWC_G1, HWC_G0, HWC_D, HWC_K})
+    ) u_framebuf (
         .S_AXI_ACLK    (pl_clk),
         .S_AXI_ARESETN  (pl_resetn),
-        // Write address (use lower 12 bits — interconnect handles base offset)
-        .S_AXI_AWADDR   (axi_awaddr[11:0]),
+        // Write address (256 KB window — interconnect handles base offset)
+        .S_AXI_AWADDR   (axi_awaddr[17:0]),
         .S_AXI_AWPROT   (axi_awprot),
         .S_AXI_AWVALID  (axi_awvalid),
         .S_AXI_AWREADY  (axi_awready),
@@ -177,7 +198,7 @@ module top_ps7 (
         .S_AXI_BVALID   (axi_bvalid),
         .S_AXI_BREADY   (axi_bready),
         // Read address
-        .S_AXI_ARADDR   (axi_araddr[11:0]),
+        .S_AXI_ARADDR   (axi_araddr[17:0]),
         .S_AXI_ARPROT   (axi_arprot),
         .S_AXI_ARVALID  (axi_arvalid),
         .S_AXI_ARREADY  (axi_arready),
@@ -192,6 +213,19 @@ module top_ps7 (
         .tt_uo_out      (tt_uo_out),
         .tt_uio_out     (tt_uio_out),
         .tt_rst_n       (tt_rst_n),
+        // Trellis capture taps
+        .dbg_sweep      (dbg_sweep),
+        .dbg_idx        (dbg_idx8),
+        .dbg_pm         (dbg_pm),
+        .dbg_surv       (dbg_surv),
+        .dbg_commit     (dbg_commit),
+        .dbg_best       (dbg_best8),
+        // BER tester bus
+        .ber_wr_en      (ber_wr_en),
+        .ber_wr_addr    (ber_wr_addr),
+        .ber_wr_data    (ber_wr_data),
+        .ber_rd_addr    (ber_rd_addr),
+        .ber_rd_data    (ber_rd_data),
         // Status LEDs
         .led_mode       (led0),
         .led_busy       (led1),
@@ -216,7 +250,28 @@ module top_ps7 (
         .uio_oe  (tt_uio_oe),
         .ena     (1'b1),
         .clk     (pl_clk),
-        .rst_n   (tt_rst_n)
+        .rst_n   (tt_rst_n),
+        .dbg_sweep (dbg_sweep), .dbg_idx (dbg_idx), .dbg_pm (dbg_pm),
+        .dbg_surv  (dbg_surv),  .dbg_commit (dbg_commit), .dbg_best (dbg_best)
+    );
+
+    // =========================================================================
+    // On-chip BER tester (independent decoder lanes, same core RTL)
+    // =========================================================================
+    ber_tester #(
+        .K      (`K_SEL),
+        .D      (`D_TB_SEL),
+        .G0_OCT (`G0_SEL),
+        .G1_OCT (`G1_SEL),
+        .LANES  (`BER_LANES_SEL)
+    ) u_ber (
+        .clk     (pl_clk),
+        .rst_n   (pl_resetn),
+        .wr_en   (ber_wr_en),
+        .wr_addr (ber_wr_addr),
+        .wr_data (ber_wr_data),
+        .rd_addr (ber_rd_addr),
+        .rd_data (ber_rd_data)
     );
 
     // =========================================================================

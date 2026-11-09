@@ -23,3 +23,11 @@ test/test_m1_debug.py
 test/results.xml
 fpga/*/web/*.log
 fpga/*/web/vivado*.jou
+fpga/*/web/ber_cache.json
+fpga/*/web/ber_cache.json.tmp
+fpga/*/sim/sim_build*/
+fpga/*/sim/results.xml
+fpga/*/sim/*.log
+fpga/*/sim/__pycache__/
+fpga/*/scripts/_*.log
+fpga/*/.Xil/

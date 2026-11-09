@@ -28,8 +28,10 @@ import logging
 import threading
 import queue as queue_mod
 from collections import deque, OrderedDict
+import json
 from flask import Flask, render_template, jsonify, request
 from xsdb_session import PersistentXSDB
+from ber_theory import theory_curves, ebn0_to_p
 
 # =========================================================================
 # Configuration
@@ -52,7 +54,7 @@ K_CONFIGS = {
     3: {"G0": 0o7,   "G1": 0o5,   "D": 12, "label": "K=3 (Minimal)"},
     5: {"G0": 0o23,  "G1": 0o35,  "D": 24, "label": "K=5 (Moderate)"},
     7: {"G0": 0o171, "G1": 0o133, "D": 42, "label": "K=7 (NASA Standard)"},
-    9: {"G0": 0o561, "G1": 0o753, "D": 60, "label": "K=9 (CCSDS, 256 states)"},
+    9: {"G0": 0o561, "G1": 0o753, "D": 60, "label": "K=9 (IS-95/3GPP, 256 states)"},
 }
 
 # Active decoder parameters (default K=7)
@@ -293,6 +295,64 @@ def software_decode_with_trellis(noisy_symbols, g0=None, g1=None, m=None):
     return decoded, trellis
 
 
+def build_hw_trellis(k, d, n_data_steps, entries, steps, pm_words, sv_words,
+                     best_words, hw_decoded_bits):
+    """Turn raw BRAM capture words into trellis visualization data, and
+    replay the hardware's sliding-window traceback to cross-check it against
+    the bits the FPGA actually emitted."""
+    m = k - 1
+    n_states = 1 << m
+    steps = min(steps, entries // n_states)
+
+    surv = []
+    for t in range(steps):
+        row = []
+        for s in range(n_states):
+            e = t * n_states + s
+            row.append((sv_words[e >> 5] >> (e & 31)) & 1)
+        surv.append(row)
+    best = [(best_words[t >> 2] >> (8 * (t & 3))) & 0xFF for t in range(steps)]
+
+    pms = None
+    if pm_words:
+        pms = []
+        for t in range(steps):
+            raw = [(pm_words[(t * n_states + s) >> 2] >> (8 * ((t * n_states + s) & 3))) & 0xFF
+                   for s in range(n_states)]
+            mn = min(raw)
+            # 255 = saturated "unreachable" seed metric in the first K-1 steps
+            pms.append([None if (v == 255 and t < m) else v - mn for v in raw])
+
+    # Hardware traceback replay: window starting at step t walks back D-1
+    # steps from best[t] and emits the LSB of the state reached (time t-D+1).
+    decided = []
+    for t in range(d - 1, steps):
+        st = best[t]
+        for j in range(d - 1):
+            b = surv[t - j][st]
+            st = ((st >> 1) | (b << (m - 1))) & (n_states - 1)
+        decided.append(st)
+    replay_bits = [s & 1 for s in decided]
+    n_chk = min(len(replay_bits), len(hw_decoded_bits))
+    mismatches = sum(a != b for a, b in zip(replay_bits[:n_chk], hw_decoded_bits[:n_chk]))
+
+    trellis = {
+        "source": "FPGA",
+        "n_states": n_states,
+        "n_timesteps": steps,
+        "n_data_steps": n_data_steps,
+        "traceback_depth": d,
+        "survivors": surv,
+        "best_states": best,
+        "traceback_path": decided,
+        "replay_checked": n_chk,
+        "replay_mismatches": mismatches,
+    }
+    if pms is not None:
+        trellis["path_metrics"] = pms
+    return trellis
+
+
 # =========================================================================
 # XSDB Frame Buffer Interface (persistent session)
 # =========================================================================
@@ -411,6 +471,53 @@ class FrameBufferXSDB:
 
         return decoded_bytes, f"OK ({out_count} bytes)"
 
+    def hw_config(self):
+        """Decode the HW_CONFIG register: {K, D, G0, G1} baked into the
+        bitstream, or None for bitstreams that predate it."""
+        try:
+            v = int(self.xsdb.execute("puts [fb_hwconfig]", timeout=10).strip(), 0)
+        except Exception:
+            return None
+        if (v >> 30) != 1:
+            return None
+        return {"k": v & 0xF, "d": (v >> 4) & 0xFF,
+                "g0": (v >> 12) & 0x1FF, "g1": (v >> 21) & 0x1FF}
+
+    def read_trellis(self, read_pm):
+        """Read the trellis captured in BRAM during the last decoded frame."""
+        out = self.xsdb.execute(f"puts [fb_trellis {1 if read_pm else 0}]",
+                                timeout=60)
+        lines = {}
+        head = None
+        for line in out.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            tag, _, rest = line.partition(" ")
+            if tag in ("PM", "SV", "BS"):
+                lines[tag] = [int(x, 0) for x in rest.split()]
+            elif head is None:
+                head = [int(x, 0) for x in line.split()]
+        if not head or len(head) < 2:
+            raise RuntimeError(f"bad trellis readback: {out[:200]!r}")
+        return head[0], head[1], lines.get("PM", []), lines.get("SV", []), lines.get("BS", [])
+
+    def ber_point(self, thresh, max_errs, timeout_ms, seed):
+        """Run the on-chip BER tester at one threshold. Returns dict."""
+        out = self.xsdb.execute(
+            f"puts [fb_ber_point {thresh} {max_errs} {timeout_ms} {seed}]",
+            timeout=timeout_ms / 1000 + 30)
+        vals = [int(x, 0) for x in out.split()]
+        if len(vals) < 11:
+            raise RuntimeError(f"bad BER readback: {out[:200]!r}")
+        st = vals[0]
+
+        def u64(i):
+            return vals[1 + i] | (vals[2 + i] << 32)
+        return {"status": st, "lanes": (st >> 8) & 0xFF, "k": (st >> 16) & 0xF,
+                "bits": u64(0), "errors": u64(2), "flips": u64(4),
+                "channel_bits": u64(6), "cycles": u64(8)}
+
     def ping(self):
         """Health check: read STATUS register."""
         try:
@@ -441,9 +548,10 @@ def log_activity(event, detail=""):
 # =========================================================================
 class DecodeJob:
     __slots__ = ("id", "k", "message", "error_rate", "trellis", "status",
-                 "position", "result", "created")
+                 "position", "result", "created", "kind")
 
     def __init__(self, job_id, k, message, error_rate, trellis=False):
+        self.kind = "decode"
         self.id = job_id
         self.k = k
         self.message = message
@@ -453,6 +561,82 @@ class DecodeJob:
         self.position = 0
         self.result = None
         self.created = time.time()
+
+
+class BerJob:
+    """BER sweep on the on-chip tester: one result point per Eb/N0 value,
+    appended live so clients can plot progress."""
+    __slots__ = ("id", "k", "points", "status", "position", "result",
+                 "created", "kind")
+
+    def __init__(self, job_id, k, points):
+        self.kind = "ber"
+        self.id = job_id
+        self.k = k
+        self.points = points
+        self.status = "queued"
+        self.position = 0
+        self.result = {"k": k, "points": [], "total": len(points)}
+        self.created = time.time()
+
+
+BER_POINT_TIMEOUT_MS = 3000   # per Eb/N0 point
+BER_MAX_ERRS = 300            # stop a point early once this many errors seen
+BER_DEFAULT_POINTS = [0, 1, 2, 3, 4, 5, 6, 7]
+FCLK_HZ = 50e6
+BER_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "ber_cache.json")
+
+
+def _load_ber_cache():
+    try:
+        with open(BER_CACHE_FILE) as f:
+            return {int(k): v for k, v in json.load(f).items()}
+    except Exception:
+        return {}
+
+
+_ber_cache = _load_ber_cache()
+
+
+def _save_ber_cache():
+    try:
+        tmp = BER_CACHE_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({str(k): v for k, v in _ber_cache.items()}, f)
+        os.replace(tmp, BER_CACHE_FILE)
+    except Exception as e:
+        logger.warning("Could not save BER cache: %s", e)
+
+
+def _run_ber_sweep(job, fpga_ref):
+    hw = fpga_ref.hw_config()
+    if hw is None:
+        raise RuntimeError("Loaded bitstream has no BER tester (rebuild needed)")
+    if hw["k"] != job.k:
+        raise RuntimeError(f"Bitstream reports K={hw['k']}, expected K={job.k}")
+    for x in job.points:
+        p = ebn0_to_p(x)
+        thresh = min(0xFFFFFFFF, int(round(p * 2 ** 32)))
+        r = fpga_ref.ber_point(thresh, BER_MAX_ERRS, BER_POINT_TIMEOUT_MS,
+                               random.getrandbits(32) | 1)
+        secs = r["cycles"] / FCLK_HZ
+        job.result["lanes"] = r["lanes"]
+        job.result["points"].append({
+            "ebn0_db": x,
+            "p_target": p,
+            "bits": r["bits"],
+            "errors": r["errors"],
+            "ber": (r["errors"] / r["bits"]) if r["bits"] else None,
+            "channel_bits": r["channel_bits"],
+            "channel_flips": r["flips"],
+            "channel_ber": (r["flips"] / r["channel_bits"]) if r["channel_bits"] else None,
+            "seconds": round(secs, 4),
+            "mbps": round(r["bits"] / secs / 1e6, 3) if secs > 0 else 0,
+        })
+    job.result["finished"] = time.time()
+    _ber_cache[job.k] = job.result
+    _save_ber_cache()
 
 
 _jobs = OrderedDict()
@@ -482,6 +666,28 @@ def _cleanup_old_jobs():
             del _jobs[jid]
 
 
+def _hw_trellis_or_software(fpga_ref, k, d, g0, g1, m, noisy_symbols,
+                            total_syms, decoded_bytes):
+    """Prefer the trellis captured in FPGA BRAM; fall back to a software
+    replay (clearly labelled) for bitstreams without the capture logic."""
+    n_states = 1 << m
+    try:
+        if fpga_ref.hw_config() is not None:
+            entries, steps, pm_w, sv_w, bs_w = fpga_ref.read_trellis(
+                read_pm=n_states <= 64)
+            hw_bits = unpack_decoded_bytes(decoded_bytes or [])
+            return build_hw_trellis(k, d, len(noisy_symbols), entries, steps,
+                                    pm_w, sv_w, bs_w, hw_bits)
+    except Exception as e:
+        logger.warning("HW trellis readback failed, using software: %s", e)
+    all_noisy_syms = noisy_symbols + [0] * (total_syms - len(noisy_symbols))
+    _, tr = software_decode_with_trellis(all_noisy_syms, g0, g1, m)
+    tr["source"] = "Software"
+    tr["n_data_steps"] = len(noisy_symbols)
+    tr["traceback_depth"] = d
+    return tr
+
+
 def _run_decode_pipeline(k, message, error_rate, use_fpga_hw, fpga_ref,
                          include_trellis=False):
     """Full encode -> noise -> decode pipeline. Returns result dict.
@@ -506,16 +712,19 @@ def _run_decode_pipeline(k, message, error_rate, use_fpga_hw, fpga_ref,
     if use_fpga_hw:
         decoded_bytes, status_msg = fpga_ref.decode_frame(all_input_bytes)
         decode_method = "FPGA"
-        # For FPGA mode with trellis requested, run parallel software decode
+        t_decode = time.time() - t_start
         if include_trellis:
-            all_noisy_syms = noisy_symbols + [0] * (d - 1)
-            _, trellis_data = software_decode_with_trellis(
-                all_noisy_syms, g0, g1, m)
+            trellis_data = _hw_trellis_or_software(
+                fpga_ref, k, d, g0, g1, m, noisy_symbols, total_syms,
+                decoded_bytes)
     else:
         all_noisy_syms = noisy_symbols + [0] * (d - 1)
         if include_trellis:
             decoded_bits_sw, trellis_data = software_decode_with_trellis(
                 all_noisy_syms, g0, g1, m)
+            trellis_data["source"] = "Software"
+            trellis_data["n_data_steps"] = len(noisy_symbols)
+            trellis_data["traceback_depth"] = d
         else:
             decoded_bits_sw = software_decode(all_noisy_syms, g0, g1, m)
         decoded_bits_sw = decoded_bits_sw[:num_info_bits]
@@ -529,7 +738,8 @@ def _run_decode_pipeline(k, message, error_rate, use_fpga_hw, fpga_ref,
                     byte_val |= (decoded_bits_sw[i + j] << j)
             decoded_bytes.append(byte_val)
         decode_method = "Software"
-    t_elapsed = time.time() - t_start
+        t_decode = time.time() - t_start
+    t_elapsed = t_decode
 
     if decoded_bytes:
         decoded_bits = unpack_decoded_bytes(decoded_bytes)
@@ -594,6 +804,16 @@ def _fpga_worker():
                 _current_fpga_k = job.k
                 log_activity("programmed", f"K={job.k}")
 
+            if job.kind == "ber":
+                job.status = "running"
+                log_activity("ber_sweep", f"K={job.k}, {len(job.points)} points")
+                _run_ber_sweep(job, fpga)
+                job.status = "done"
+                pts = job.result["points"]
+                total_bits = sum(pt["bits"] for pt in pts)
+                log_activity("ber_done", f"K={job.k}, {total_bits/1e6:.1f}M bits on FPGA")
+                continue
+
             job.status = "decoding"
             result = _run_decode_pipeline(
                 job.k, job.message, job.error_rate,
@@ -639,10 +859,11 @@ def security_headers(response):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self'; "
+        # Cloudflare injects its Web Analytics beacon at the edge
+        "script-src 'self' https://static.cloudflareinsights.com; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:; "
-        "connect-src 'self'; "
+        "connect-src 'self' https://cloudflareinsights.com; "
         "frame-ancestors 'none'"
     )
 
@@ -700,6 +921,8 @@ decode_limiter = RateLimiter(rate=2, burst=5)
 fpga_limiter = RateLimiter(rate=0.2, burst=2)
 # General API: 5 req/s, burst 15
 general_limiter = RateLimiter(rate=5, burst=15)
+# BER sweeps hold the FPGA for ~25 s: 1 per minute per IP
+ber_limiter = RateLimiter(rate=1 / 60, burst=1)
 
 
 def get_client_ip():
@@ -714,9 +937,29 @@ def rate_limit_exceeded(e):
     return jsonify({"error": "Rate limit exceeded. Please wait and try again."}), 429
 
 
+def _asset_version():
+    """Content hash of the static assets, appended as ?v= so browsers and
+    Cloudflare (which caches static files for hours) fetch new code on deploy."""
+    import hashlib
+    h = hashlib.sha1()
+    static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+    for name in ("app.js", "style.css"):
+        try:
+            with open(os.path.join(static_dir, name), "rb") as f:
+                h.update(f.read())
+        except OSError:
+            pass
+    return h.hexdigest()[:10]
+
+
+ASSET_VERSION = _asset_version()
+
+
 @app.route("/")
 def index():
-    return render_template("index.html")
+    resp = app.make_response(render_template("index.html", v=ASSET_VERSION))
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 @app.route("/api/status")
@@ -940,11 +1183,67 @@ def api_job_status(job_id):
         "queue_depth": _job_queue.qsize(),
         "k": job.k,
     }
-    if job.status == "done":
-        resp["result"] = job.result
-    elif job.status == "error":
+    resp["kind"] = job.kind
+    if job.status in ("done", "error") or job.kind == "ber":
         resp["result"] = job.result
     return jsonify(resp)
+
+
+@app.route("/api/ber")
+def api_ber():
+    """Theory curves + latest hardware-measured BER points for one K."""
+    if not general_limiter.allow(get_client_ip()):
+        return jsonify({"error": "Rate limit exceeded"}), 429
+    try:
+        k = int(request.args.get("k", K))
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid K"}), 400
+    if k not in K_CONFIGS:
+        return jsonify({"error": f"Invalid K={k}"}), 400
+    cfg = K_CONFIGS[k]
+    running = None
+    with _jobs_lock:
+        for j in _jobs.values():
+            if j.kind == "ber" and j.status in ("queued", "programming", "running"):
+                running = {"job_id": j.id, "k": j.k, "status": j.status}
+    return jsonify({
+        "k": k,
+        "theory": theory_curves(k, cfg["G0"], cfg["G1"]),
+        "measured": _ber_cache.get(k),
+        "running": running,
+        "fpga_mode": USE_FPGA,
+    })
+
+
+@app.route("/api/ber/sweep", methods=["POST"])
+def api_ber_sweep():
+    """Queue a BER sweep on the FPGA. Only one sweep may be queued at once;
+    if one exists it is returned so every visitor can watch the same run."""
+    if not USE_FPGA:
+        return jsonify({"error": "BER sweeps need the FPGA (server is in software mode)"}), 400
+    data = request.get_json(silent=True) or {}
+    try:
+        k = int(data.get("k", K))
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid K"}), 400
+    if k not in K_CONFIGS:
+        return jsonify({"error": f"Invalid K={k}"}), 400
+    if not os.path.exists(bit_file_for_k(k)):
+        return jsonify({"error": f"No bitstream for K={k}"}), 400
+    with _jobs_lock:
+        for j in _jobs.values():
+            if j.kind == "ber" and j.status in ("queued", "programming", "running"):
+                return jsonify({"job_id": j.id, "k": j.k, "status": j.status,
+                                "joined": True})
+    if not ber_limiter.allow(get_client_ip()):
+        return jsonify({"error": "One BER sweep per minute, please."}), 429
+    job = BerJob(uuid.uuid4().hex[:12], k, list(BER_DEFAULT_POINTS))
+    with _jobs_lock:
+        _jobs[job.id] = job
+        job.position = _job_queue.qsize() + 1
+    _job_queue.put(job)
+    return jsonify({"job_id": job.id, "k": k, "status": "queued",
+                    "position": job.position})
 
 
 @app.route("/api/activity")
@@ -1022,10 +1321,10 @@ if __name__ == "__main__":
     try:
         from waitress import serve
         print("Starting production server (waitress)...")
-        serve(app, host="0.0.0.0", port=5000, threads=4,
+        serve(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), threads=4,
               channel_timeout=30, recv_bytes=16384,
               url_scheme="https")
     except ImportError:
         print("WARNING: waitress not installed, using Flask dev server")
         print("  Install for production: pip install waitress")
-        app.run(host="0.0.0.0", port=5000, debug=False)
+        app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)

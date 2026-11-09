@@ -101,8 +101,8 @@ connect_bd_intf_net [get_bd_intf_pins axi_interconnect_0/M00_AXI] [get_bd_intf_p
 # Associate the AXI interface with the clock port
 set_property CONFIG.ASSOCIATED_BUSIF {M_AXI} [get_bd_ports pl_clk]
 
-# --- Address mapping: 0x43C00000, 4K ---
-create_bd_addr_seg -range 0x1000 -offset 0x43C00000 \
+# --- Address mapping: 0x43C00000, 256K (regs + trellis capture BRAM) ---
+create_bd_addr_seg -range 0x40000 -offset 0x43C00000 \
     [get_bd_addr_spaces ps7/Data] \
     [get_bd_addr_segs M_AXI/Reg] \
     SEG_framebuf
@@ -150,6 +150,7 @@ add_files -norecurse [list \
 add_files -norecurse [list \
     "$fpga_src/top_ps7.v"              \
     "$fpga_src/viterbi_axi_framebuf.v" \
+    "$fpga_src/ber_tester.v"           \
 ]
 
 # Mark SystemVerilog files
@@ -181,6 +182,6 @@ puts "Project created: $proj_name"
 puts "Board:           PYNQ-Z2 ($part)"
 puts "Top module:      top_ps7"
 puts "Block design:    system (PS7 + AXI-Lite export)"
-puts "Frame buffer:    0x43C00000 (4 KB)"
+puts "Frame buffer:    0x43C00000 (256 KB)"
 puts "Project dir:     $proj_dir"
 puts "============================================="

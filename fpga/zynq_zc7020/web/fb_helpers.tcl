@@ -55,20 +55,106 @@ proc fb_program {bit_path ps7_init_path} {
     }
     catch {stop}
     after 200
+    # rst -processor occasionally fails with an AHB AP transaction error right
+    # after PL reconfiguration. ps7_init only needs a halted core, so accept a
+    # failed reset as long as the core reports Stopped.
     if {[catch {rst -processor} e]} {
-        return "FAIL rst_processor: $e"
+        after 500
+        if {[catch {rst -processor} e2]} {
+            catch {stop}
+            if {[catch {state} st] || ![string match "Stopped*" $st]} {
+                return "FAIL rst_processor: $e2"
+            }
+        }
     }
     after 500
     if {$ps7_init_path ne ""} {
-        if {[catch {source $ps7_init_path} e]} { return "FAIL source_ps7_init: $e" }
-        if {[catch {ps7_init} e]} { return "FAIL ps7_init: $e" }
-        if {[catch {ps7_post_config} e]} { return "FAIL ps7_post_config: $e" }
+        # ps7_init.tcl defines globals with top-level `set`; it must be
+        # sourced (and its procs run) at global scope, not inside this proc.
+        if {[catch {uplevel #0 [list source $ps7_init_path]} e]} { return "FAIL source_ps7_init: $e" }
+        if {[catch {uplevel #0 ps7_init} e]} { return "FAIL ps7_init: $e" }
+        if {[catch {uplevel #0 ps7_post_config} e]} { return "FAIL ps7_post_config: $e" }
     }
     after 500
     if {[catch {fb_ping} v]} {
         return "FAIL fb_ping: $v"
     }
     return "OK $v"
+}
+
+# -----------------------------------------------------------------------------
+# fb_read_words {offset n} -- block read n 32-bit words starting at offset
+# -----------------------------------------------------------------------------
+proc fb_read_words {offset n} {
+    set out {}
+    set addr [expr {$::FB_BASE + $offset}]
+    while {$n > 0} {
+        set c [expr {$n > 512 ? 512 : $n}]
+        if {$c == 1} {
+            lappend out [mrd -force -value [format 0x%08X $addr]]
+        } else {
+            foreach v [mrd -force -value [format 0x%08X $addr] $c] { lappend out $v }
+        }
+        incr addr [expr {$c * 4}]
+        incr n -$c
+    }
+    return $out
+}
+
+# -----------------------------------------------------------------------------
+# fb_hwconfig -- {ver G1 G0 D K} word written into the bitstream (0 = old bit)
+# -----------------------------------------------------------------------------
+proc fb_hwconfig {} {
+    return [mrd -force -value [fb_addr 0x014]]
+}
+
+# -----------------------------------------------------------------------------
+# fb_trellis {read_pm} -- read back the trellis captured during the last frame
+# Returns 4 lines: "entries steps" / pm words / survivor words / best words
+# -----------------------------------------------------------------------------
+proc fb_trellis {read_pm} {
+    set entries [expr {[mrd -force -value [fb_addr 0x00C]] & 0x1FFFF}]
+    set steps   [expr {[mrd -force -value [fb_addr 0x010]] & 0x7FF}]
+    set pm {}
+    if {$read_pm && $entries > 0} {
+        set pm [fb_read_words 0x20000 [expr {($entries + 3) / 4}]]
+    }
+    set sv {}
+    if {$entries > 0} { set sv [fb_read_words 0x10000 [expr {($entries + 31) / 32}]] }
+    set best {}
+    if {$steps > 0} { set best [fb_read_words 0x14000 [expr {($steps + 3) / 4}]] }
+    return "$entries $steps\nPM $pm\nSV $sv\nBS $best"
+}
+
+# -----------------------------------------------------------------------------
+# fb_ber_point {thresh maxerrs timeout_ms seed}
+#   Run the on-chip BER tester at one channel crossover threshold until
+#   maxerrs decoded errors or timeout_ms elapses.
+#   Returns: status bits_lo bits_hi errs_lo errs_hi flips_lo flips_hi
+#            chbits_lo chbits_hi cycles_lo cycles_hi
+# -----------------------------------------------------------------------------
+proc fb_ber_point {thresh maxerrs timeout_ms seed} {
+    set b [expr {$::FB_BASE + 0x100}]
+    mwr -force [format 0x%08X [expr {$b + 0x08}]] [format 0x%08X $thresh]
+    mwr -force [format 0x%08X [expr {$b + 0x0C}]] 0
+    mwr -force [format 0x%08X [expr {$b + 0x10}]] 0
+    mwr -force [format 0x%08X [expr {$b + 0x14}]] [format 0x%08X $maxerrs]
+    mwr -force [format 0x%08X [expr {$b + 0x18}]] [format 0x%08X $seed]
+    mwr -force [format 0x%08X $b] 1
+    set t0 [clock milliseconds]
+    while {1} {
+        after 25
+        set st [mrd -force -value [format 0x%08X [expr {$b + 0x04}]]]
+        if {!($st & 1)} break
+        if {[clock milliseconds] - $t0 > $timeout_ms} {
+            mwr -force [format 0x%08X $b] 2
+            after 1
+            break
+        }
+    }
+    set st [mrd -force -value [format 0x%08X [expr {$b + 0x04}]]]
+    set vals [mrd -force -value [format 0x%08X [expr {$b + 0x20}]] 10]
+    return [concat $st $vals]
 }
 
 # -----------------------------------------------------------------------------

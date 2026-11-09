@@ -426,6 +426,116 @@ main {
     white-space: nowrap;
 }
 
+.source-badge {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.1rem 0.55rem;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    vertical-align: middle;
+    color: var(--text);
+}
+.source-badge:empty { display: none; }
+.source-badge.hw { background: rgba(13, 124, 62, 0.1); border: 1px solid rgba(13, 124, 62, 0.35); }
+.source-badge.sw { background: var(--bg); border: 1px solid var(--card-border); color: var(--text-dim); }
+
+.trellis-verify {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin: -0.4rem 0 0.75rem;
+}
+.trellis-verify.ok { color: var(--text); }
+.trellis-verify.bad { color: var(--error); }
+
+.trellis-step-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+}
+#trellis-step { flex: 1; min-width: 160px; accent-color: #2a78d6; }
+.trellis-step-info {
+    flex-basis: 100%;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text);
+    min-height: 1.2em;
+}
+
+.trellis-legend, .ber-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.1rem;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    margin-bottom: 0.5rem;
+}
+.trellis-legend span, .ber-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.lg { display: inline-block; width: 18px; height: 0; border-top-width: 3px; border-top-style: solid; }
+.lg-path { border-top-color: #0d7c3e; }
+.lg-window { border-top-color: #2a78d6; }
+.lg-flush { height: 10px; border: none; background: rgba(90, 101, 119, 0.15); }
+
+/* BER section */
+.ber-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+.btn-primary-sm {
+    padding: 0.45rem 1rem;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.btn-primary-sm:hover { opacity: 0.85; }
+.btn-primary-sm:disabled { opacity: 0.4; cursor: not-allowed; }
+.ber-chart-wrap {
+    width: 100%;
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    background: #fcfcfb;
+    margin-bottom: 0.75rem;
+}
+#ber-canvas { display: block; }
+.ber-stats { margin-top: 0.25rem; }
+.ber-details summary {
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin: 0.25rem 0 0.5rem;
+}
+.ber-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+.ber-table th, .ber-table td {
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid var(--card-border);
+    text-align: right;
+}
+.ber-table th { color: var(--text-dim); font-weight: 600; }
+.ber-method {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+}
+
 /* Activity Log */
 .activity-log {
     max-height: 200px;
@@ -509,3 +619,5 @@ footer {
     .results-grid { grid-template-columns: repeat(2, 1fr); }
     .info-content { grid-template-columns: 1fr; }
 }
+
+.ber-details { overflow-x: auto; }

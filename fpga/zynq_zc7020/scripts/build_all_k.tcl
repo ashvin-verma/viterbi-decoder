@@ -15,26 +15,34 @@ set proj_name "viterbi_ps7"
 
 open_project "$proj_dir/$proj_name.xpr"
 
-# K configs: {K D G0_dec G1_dec}
+# K configs: {K D G0_dec G1_dec BER_LANES}
+# Optional: set ::env(K_LIST) "7 9" to build a subset.
 set k_configs {
-    {3  12  7    5  }
-    {5  24  19   29 }
-    {7  42  121  91 }
-    {9  60  369  491}
+    {3  12  7    5    8}
+    {5  24  19   29   8}
+    {7  42  121  91   4}
+    {9  60  369  491  1}
+}
+if {[info exists ::env(K_LIST)]} {
+    set sel {}
+    foreach cfg $k_configs {
+        if {[lindex $cfg 0] in $::env(K_LIST)} { lappend sel $cfg }
+    }
+    set k_configs $sel
 }
 
 set success_list {}
 set fail_list {}
 
 foreach cfg $k_configs {
-    lassign $cfg k_val d_val g0_val g1_val
+    lassign $cfg k_val d_val g0_val g1_val lanes
 
     puts "============================================="
-    puts ">>> Building K=$k_val (D=$d_val, G0=$g0_val, G1=$g1_val)"
+    puts ">>> Building K=$k_val (D=$d_val, G0=$g0_val, G1=$g1_val, BER lanes=$lanes)"
     puts "============================================="
 
     # Set verilog defines for this K
-    set defines "K_SEL=$k_val D_TB_SEL=$d_val G0_SEL=$g0_val G1_SEL=$g1_val"
+    set defines "K_SEL=$k_val D_TB_SEL=$d_val G0_SEL=$g0_val G1_SEL=$g1_val BER_LANES_SEL=$lanes VITERBI_DBG"
     set_property verilog_define $defines [current_fileset]
 
     # Reset and launch synthesis
@@ -64,6 +72,11 @@ foreach cfg $k_configs {
     if {$bit_file ne ""} {
         set dst "$proj_dir/${proj_name}_k${k_val}.bit"
         file copy -force $bit_file $dst
+        # Keep reports per K for utilization/timing review
+        foreach rpt [glob -nocomplain "$proj_dir/$proj_name.runs/impl_1/*utilization_placed.rpt" \
+                                      "$proj_dir/$proj_name.runs/impl_1/*timing_summary_routed.rpt"] {
+            file copy -force $rpt "$proj_dir/k${k_val}_[file tail $rpt]"
+        }
         puts ">>> Bitstream: $dst"
         lappend success_list $k_val
 

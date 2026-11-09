@@ -18,12 +18,14 @@
 
 `default_nettype none
 
-module viterbi_axi_framebuf (
+module viterbi_axi_framebuf #(
+    parameter [31:0] HW_CONFIG = 32'h0
+) (
     // AXI-Lite slave interface
     input  wire        S_AXI_ACLK,
     input  wire        S_AXI_ARESETN,
 
-    input  wire [11:0] S_AXI_AWADDR,
+    input  wire [17:0] S_AXI_AWADDR,
     input  wire [2:0]  S_AXI_AWPROT,
     input  wire        S_AXI_AWVALID,
     output reg         S_AXI_AWREADY,
@@ -37,7 +39,7 @@ module viterbi_axi_framebuf (
     output reg         S_AXI_BVALID,
     input  wire        S_AXI_BREADY,
 
-    input  wire [11:0] S_AXI_ARADDR,
+    input  wire [17:0] S_AXI_ARADDR,
     input  wire [2:0]  S_AXI_ARPROT,
     input  wire        S_AXI_ARVALID,
     output reg         S_AXI_ARREADY,
@@ -56,6 +58,21 @@ module viterbi_axi_framebuf (
     // Reset to TT module (active-low)
     output wire        tt_rst_n,
 
+    // Trellis capture taps from the decoder core
+    input  wire        dbg_sweep,
+    input  wire [7:0]  dbg_idx,
+    input  wire [7:0]  dbg_pm,
+    input  wire        dbg_surv,
+    input  wire        dbg_commit,
+    input  wire [7:0]  dbg_best,
+
+    // BER tester register bus (0x100-0x17F)
+    output wire        ber_wr_en,
+    output wire [4:0]  ber_wr_addr,
+    output wire [31:0] ber_wr_data,
+    output wire [4:0]  ber_rd_addr,
+    input  wire [31:0] ber_rd_data,
+
     // Status LEDs
     output wire        led_mode,
     output wire        led_busy,
@@ -72,6 +89,14 @@ module viterbi_axi_framebuf (
     localparam ADDR_IN_END    = 12'h4FC;  // 64 words = 256 bytes
     localparam ADDR_OUT_BASE  = 12'h800;
     localparam ADDR_OUT_END   = 12'h8FC;
+    localparam ADDR_CAP_ENTRIES = 12'h00C;   // RO [16:0] ACS entries captured, [17] full
+    localparam ADDR_CAP_STEPS   = 12'h010;   // RO [10:0] trellis steps (commits) captured
+    localparam ADDR_HW_CONFIG   = 12'h014;   // RO {ver[1:0], G1[8:0], G0[8:0], D[7:0], K[3:0]}
+    // 0x100-0x17F     : BER tester registers
+    // 0x10000-0x13FFF : survivor bits, entry e -> word e/32, bit e%32
+    // 0x14000-0x140FF : best state per step, step t -> word t/4, byte t%4
+    // 0x20000-0x3FFFF : path metrics, entry e -> word e/4, byte e%4
+    //   entry e = t * 2^(K-1) + state   (ACS results in sweep order)
 
     // =========================================================================
     // Internal registers
@@ -88,6 +113,16 @@ module viterbi_axi_framebuf (
     // =========================================================================
     reg [7:0] input_bram [0:255];
     reg [7:0] output_bram [0:255];
+
+    // Trellis capture memories (see capture section below)
+    reg [31:0] cap_pm_mem   [0:32767];
+    reg [31:0] cap_surv_mem [0:4095];
+    reg [31:0] cap_best_mem [0:255];
+    reg [16:0] cap_e;
+    reg        cap_full;
+    reg [10:0] cap_steps;
+    reg [31:0] cap_pm_acc, cap_surv_acc, cap_best_acc;
+    reg [31:0] cap_pm_q, cap_surv_q, cap_best_q;
 
     // =========================================================================
     // Frame Controller FSM
@@ -250,7 +285,7 @@ module viterbi_axi_framebuf (
     // =========================================================================
     // AXI-Lite Write Channel
     // =========================================================================
-    reg [11:0] aw_addr_r;
+    reg [17:0] aw_addr_r;
     reg        aw_done;
     reg        w_done;
 
@@ -258,7 +293,7 @@ module viterbi_axi_framebuf (
     always @(posedge S_AXI_ACLK) begin
         if (!S_AXI_ARESETN) begin
             S_AXI_AWREADY <= 1'b0;
-            aw_addr_r     <= 12'd0;
+            aw_addr_r     <= 18'd0;
             aw_done       <= 1'b0;
         end else begin
             if (S_AXI_AWVALID && !aw_done) begin
@@ -321,7 +356,10 @@ module viterbi_axi_framebuf (
 
             // Process write when both address and data are ready
             if (aw_done && w_done && !S_AXI_BVALID) begin
-                if (aw_addr_r == ADDR_CTRL) begin
+                if (aw_addr_r[17:12] != 6'd0) begin
+                    // capture regions are read-only
+                end
+                else if (aw_addr_r[11:0] == ADDR_CTRL) begin
                     if (S_AXI_WSTRB[0]) begin
                         ctrl_trigger    <= S_AXI_WDATA[0];
                         ctrl_soft_reset <= S_AXI_WDATA[1];
@@ -329,13 +367,13 @@ module viterbi_axi_framebuf (
                             fc_wr_idx_rst <= 1'b1;  // reset output index on trigger
                     end
                 end
-                else if (aw_addr_r == ADDR_FRAME_LEN) begin
+                else if (aw_addr_r[11:0] == ADDR_FRAME_LEN) begin
                     if (S_AXI_WSTRB[0])
                         frame_len[7:0] <= S_AXI_WDATA[7:0];
                     if (S_AXI_WSTRB[1])
                         frame_len[8]   <= S_AXI_WDATA[8];
                 end
-                else if (aw_addr_r >= ADDR_IN_BASE && aw_addr_r <= ADDR_IN_END) begin
+                else if (aw_addr_r[11:0] >= ADDR_IN_BASE && aw_addr_r[11:0] <= ADDR_IN_END) begin
                     // Write to input BRAM (4 bytes per 32-bit word)
                     // Word address: (addr - 0x400) / 4 -> byte base = word_idx * 4
                     // Each 32-bit write stores up to 4 bytes
@@ -355,13 +393,13 @@ module viterbi_axi_framebuf (
     // =========================================================================
     // AXI-Lite Read Channel
     // =========================================================================
-    reg [11:0] ar_addr_r;
+    reg [17:0] ar_addr_r;
 
     // Read address handshake
     always @(posedge S_AXI_ACLK) begin
         if (!S_AXI_ARESETN) begin
             S_AXI_ARREADY <= 1'b0;
-            ar_addr_r     <= 12'd0;
+            ar_addr_r     <= 18'd0;
         end else begin
             if (S_AXI_ARVALID && !S_AXI_ARREADY) begin
                 S_AXI_ARREADY <= 1'b1;
@@ -383,13 +421,29 @@ module viterbi_axi_framebuf (
                 S_AXI_RVALID <= 1'b1;
                 S_AXI_RRESP  <= 2'b00;  // OKAY
 
-                if (ar_addr_r == ADDR_CTRL)
+                if (ar_addr_r[17])
+                    S_AXI_RDATA <= cap_pm_q;
+                else if (ar_addr_r[16] && !ar_addr_r[14])
+                    S_AXI_RDATA <= cap_surv_q;
+                else if (ar_addr_r[16])
+                    S_AXI_RDATA <= cap_best_q;
+                else if (ar_addr_r[15:12] != 4'd0)
+                    S_AXI_RDATA <= 32'hDEADBEEF;
+                else if (ar_addr_r[11:7] == 5'b00010)          // 0x100-0x17F
+                    S_AXI_RDATA <= ber_rd_data;
+                else if (ar_addr_r[11:0] == ADDR_CAP_ENTRIES)
+                    S_AXI_RDATA <= {14'd0, cap_full, cap_e};
+                else if (ar_addr_r[11:0] == ADDR_CAP_STEPS)
+                    S_AXI_RDATA <= {21'd0, cap_steps};
+                else if (ar_addr_r[11:0] == ADDR_HW_CONFIG)
+                    S_AXI_RDATA <= HW_CONFIG;
+                else if (ar_addr_r[11:0] == ADDR_CTRL)
                     S_AXI_RDATA <= {30'd0, ctrl_soft_reset, ctrl_trigger};
-                else if (ar_addr_r == ADDR_STATUS)
+                else if (ar_addr_r[11:0] == ADDR_STATUS)
                     S_AXI_RDATA <= {16'd0, out_byte_count, 6'd0, status_done, status_busy};
-                else if (ar_addr_r == ADDR_FRAME_LEN)
+                else if (ar_addr_r[11:0] == ADDR_FRAME_LEN)
                     S_AXI_RDATA <= {23'd0, frame_len};
-                else if (ar_addr_r >= ADDR_OUT_BASE && ar_addr_r <= ADDR_OUT_END) begin
+                else if (ar_addr_r[11:0] >= ADDR_OUT_BASE && ar_addr_r[11:0] <= ADDR_OUT_END) begin
                     // Read from output BRAM (4 bytes per word)
                     S_AXI_RDATA <= {
                         output_bram[{ar_addr_r[7:2], 2'b11}],
@@ -405,6 +459,59 @@ module viterbi_axi_framebuf (
             end
         end
     end
+
+    // =========================================================================
+    // BER tester register bus
+    // =========================================================================
+    assign ber_wr_en   = aw_done && w_done && !S_AXI_BVALID &&
+                         (aw_addr_r[17:12] == 6'd0) && (aw_addr_r[11:7] == 5'b00010);
+    assign ber_wr_addr = aw_addr_r[6:2];
+    assign ber_wr_data = S_AXI_WDATA;
+    assign ber_rd_addr = ar_addr_r[6:2];
+
+    // =========================================================================
+    // Trellis capture (block RAM). Records every ACS result of the frame
+    // being decoded: path metric + survivor bit per (step, state), and the
+    // best state chosen at each commit. Cleared on frame trigger.
+    // =========================================================================
+    wire [31:0] pm_acc_n  = (cap_e[1:0] == 2'd0) ? {24'd0, dbg_pm}
+                           : (cap_pm_acc | ({24'd0, dbg_pm} << {cap_e[1:0], 3'b000}));
+    wire [31:0] surv_acc_n = (cap_e[4:0] == 5'd0) ? {31'd0, dbg_surv}
+                           : (cap_surv_acc | ({31'd0, dbg_surv} << cap_e[4:0]));
+    wire [31:0] best_acc_n = (cap_steps[1:0] == 2'd0) ? {24'd0, dbg_best}
+                           : (cap_best_acc | ({24'd0, dbg_best} << {cap_steps[1:0], 3'b000}));
+
+    wire cap_we_e    = dbg_sweep && !cap_full && status_busy;
+    wire cap_we_step = dbg_commit && (cap_steps < 11'd1024) && status_busy;
+
+    always @(posedge S_AXI_ACLK) begin
+        if (!S_AXI_ARESETN || fc_wr_idx_rst) begin
+            cap_e <= 17'd0; cap_full <= 1'b0; cap_steps <= 11'd0;
+            cap_pm_acc <= 32'd0; cap_surv_acc <= 32'd0; cap_best_acc <= 32'd0;
+        end else begin
+            if (cap_we_e) begin
+                cap_pm_acc   <= pm_acc_n;
+                cap_surv_acc <= surv_acc_n;
+                cap_e        <= cap_e + 17'd1;
+                if (cap_e == 17'h1FFFF) cap_full <= 1'b1;
+            end
+            if (cap_we_step) begin
+                cap_best_acc <= best_acc_n;
+                cap_steps    <= cap_steps + 11'd1;
+            end
+        end
+    end
+
+    // BRAM write ports (rewrite the partial word each time -> no flush needed)
+    always @(posedge S_AXI_ACLK) if (cap_we_e)    cap_pm_mem[cap_e[16:2]]       <= pm_acc_n;
+    always @(posedge S_AXI_ACLK) if (cap_we_e)    cap_surv_mem[cap_e[16:5]]     <= surv_acc_n;
+    always @(posedge S_AXI_ACLK) if (cap_we_step) cap_best_mem[cap_steps[9:2]]  <= best_acc_n;
+
+    // BRAM read ports: address sampled from ARADDR during the handshake
+    // cycle; data used one cycle later when ARREADY is high.
+    always @(posedge S_AXI_ACLK) cap_pm_q   <= cap_pm_mem[S_AXI_ARADDR[16:2]];
+    always @(posedge S_AXI_ACLK) cap_surv_q <= cap_surv_mem[S_AXI_ARADDR[13:2]];
+    always @(posedge S_AXI_ACLK) cap_best_q <= cap_best_mem[S_AXI_ARADDR[9:2]];
 
     // =========================================================================
     // LED status outputs
