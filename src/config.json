@@ -31,6 +31,11 @@
   "//": "https://tinytapeout.com/faq/#how-can-i-map-an-additional-external-clock-to-one-of-the-gpios",
   "CLOCK_PORT": "clk",
 
+  "//": "LibreLane 3 (ttsky26d) picks clkdlybuf4s25/dlymetal6s2s delay cells as fanout",
+  "//": "buffers (~1 ns per stage at ss_100C), turning +5.75 ns setup slack into -3.5 ns.",
+  "//": "Keep them out of the resizer's buffer choices; hold fixing can still use dlygate4sd*.",
+  "EXTRA_EXCLUDED_CELLS": ["sky130_fd_sc_hd__clkdlybuf4s*", "sky130_fd_sc_hd__dlymetal6s*"],
+
   "//": "Configuration docs: https://librelane.readthedocs.io/en/latest/reference/configuration.html",
 
   "//": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
