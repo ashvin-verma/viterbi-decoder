@@ -158,6 +158,9 @@ async def _reset(dut):
             break
     else:
         raise AssertionError("rx_sym_ready never asserted after reset")
+    # _safe_int maps X/Z to 0, which would hide X leaking out of the
+    # (no longer reset) metric/survivor arrays in gate-level sim.
+    assert dut.uo_out.value.is_resolvable, f"uo_out has X/Z after reset: {dut.uo_out.value}"
 
 
 async def _collect_decoded(dut, decoded_list, stop_event):

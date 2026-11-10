@@ -37,6 +37,7 @@ module tb_pm_bank;
   reg clk;
   reg rst;
   reg init_frame;
+  reg [Wm-1:0] t2_prev;
   reg [M-1:0] rd_idx0;
   reg [M-1:0] rd_idx1;
   reg wr_en;
@@ -292,13 +293,8 @@ module tb_pm_bank;
       $display("    ✓ After reset: prev_is_A=1");
     end
     
-    // Reads from A should be 0 (we reset arrays to 0)
-    for (i = 0; i < S; i = i + 1) begin
-      check_read(i, 0, 0);
-    end
-    
-    // Verify no spurious writes
-    $display("    ✓ Bank A reads are 0, no writes occurred");
+    // Bank arrays are intentionally not reset (init_frame seeds them), so
+    // their contents are undefined here; T1 checks init_frame.
     
     end_test();
     
@@ -336,13 +332,17 @@ module tb_pm_bank;
     //=========================================================================
     start_test("T2: Single write into current bank");
     
-    // prev_is_A==1, so writes go to Bank B
-    // Write value 13 to index 2
+    // prev_is_A==1, so writes go to Bank B. Banks are not reset, so record
+    // what Bank A holds at idx 2 and check the write leaves it unchanged.
+    rd_idx0 = 2; #1;
+    t2_prev = rd_pm0;
     do_write(2, 13);
-    
-    // Reads still come from Bank A (all zeros)
-    check_read(2, 0, 0);
-    $display("    ✓ Write to curr bank (B) doesn't affect reads from prev bank (A)");
+    rd_idx0 = 2; #1;
+    if (rd_pm0 !== t2_prev) begin
+      $display("    ✗ Write to curr bank changed prev bank: %0d -> %0d", t2_prev, rd_pm0);
+      test_pass = 0;
+    end else
+      $display("    ✓ Write to curr bank (B) doesn't affect reads from prev bank (A)");
     
     // Swap to make B the prev bank
     do_swap();
@@ -350,11 +350,6 @@ module tb_pm_bank;
     // Now reads should come from B
     check_read(2, 13, 0);
     $display("    ✓ After swap: rd_pm[2]=%0d (expected 13)", rd_pm0);
-    
-    // Other indices should still be 0
-    check_read(0, 0, 0);
-    check_read(1, 0, 0);
-    check_read(3, 0, 0);
     
     end_test();
     

@@ -19,21 +19,19 @@ module survivor_mem #(
 );
 
   reg [S-1:0] mem [0:D-1];
-  integer i;
 
   always @(posedge clk) begin
-    if (rst) begin
+    if (rst)
       wr_ptr <= {$clog2(D){1'b0}};
-      for (i = 0; i < D; i = i + 1) begin
-        mem[i] <= {S{1'b0}};
-      end
-    end else if (wr_en) begin
+    else if (wr_en)
+      wr_ptr <= (wr_ptr == D - 1) ? {$clog2(D){1'b0}} : wr_ptr + 1'b1;
+  end
+
+  // Rows have no reset: the core's warm-up counter holds off the first
+  // traceback until D rows have been written, so no row is read unwritten.
+  always @(posedge clk) begin
+    if (wr_en)
       mem[wr_ptr] <= surv_row;
-      if (wr_ptr == D - 1)
-        wr_ptr <= {$clog2(D){1'b0}};
-      else
-        wr_ptr <= wr_ptr + 1;
-    end
   end
 
   // Write-first on collision (if client ever reads the row being written)
