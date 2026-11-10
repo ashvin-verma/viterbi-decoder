@@ -66,6 +66,11 @@ module tt_um_viterbi_core #(
     logic [$clog2(S)-1:0]  best_state;
     logic [M-1:0]          s_end_state;
 
+    // Registered ACS output (pipeline stage before metric write / argmin)
+    logic [Wm-1:0] pm_q;
+    logic [M-1:0]  idx_q;
+    logic          pm_vld_q;
+
     // pm_bank / survivor_mem control
     logic                  pm_wr_en, surv_wr_en, swap_banks;
     logic                  init_pending, init_frame_pulse;
@@ -90,7 +95,7 @@ module tt_um_viterbi_core #(
     assign rx_sym_ready = (state == ST_IDLE) && !tb_busy && !tb_start;
     assign accept_sym   = rx_sym_valid && rx_sym_ready;
     assign last_idx     = (sweep_idx == S-1);
-    assign pm_wr_en     = (state == ST_SWEEP);
+    assign pm_wr_en     = pm_vld_q;   // ACS result is written one cycle later (see pm_q)
     assign surv_wr_en   = (state == ST_COMMIT);
     assign swap_banks   = (state == ST_COMMIT);
 
@@ -131,7 +136,28 @@ module tt_um_viterbi_core #(
         else if (state==ST_SWEEP) surv_row[sweep_idx] <= surv_sel;
     end
 
-    // Argmin (track over pm_out during sweep)
+    // ACS output register: breaks the sweep critical path (bank read -> ACS ->
+    // argmin compare) at pm_out. The metric write and argmin run one cycle
+    // behind the ACS; the last state's write lands on the COMMIT edge together
+    // with the bank swap, so the symbol period is unchanged.
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            pm_q     <= '0;
+            idx_q    <= '0;
+            pm_vld_q <= 1'b0;
+        end else begin
+            pm_q     <= pm_out;
+            idx_q    <= sweep_idx;
+            pm_vld_q <= (state == ST_SWEEP);
+        end
+    end
+
+    // Argmin over the registered metrics. *_f include the candidate in pm_q,
+    // which matters in COMMIT, when the last state is still in flight.
+    wire                  take          = pm_vld_q && (pm_q <= best_metric);  // tie-break toward later state
+    wire [Wm-1:0]         best_metric_f = take ? pm_q  : best_metric;
+    wire [$clog2(S)-1:0]  best_state_f  = take ? idx_q : best_state;
+
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             best_metric <= {Wm{1'b1}};
@@ -139,18 +165,16 @@ module tt_um_viterbi_core #(
         end else if (accept_sym) begin
             best_metric <= {Wm{1'b1}};
             best_state  <= '0;
-        end else if (state==ST_SWEEP) begin
-            if (pm_out <= best_metric) begin   // tie-break toward *later* state OK
-                best_metric <= pm_out;
-                best_state  <= sweep_idx;
-            end
+        end else if (take) begin
+            best_metric <= pm_q;
+            best_state  <= idx_q;
         end
     end
 
     // Latch end-state at commit (time t)
     always_ff @(posedge clk or posedge rst) begin
         if (rst) s_end_state <= '0;
-        else if (state==ST_COMMIT) s_end_state <= best_state[$bits(s_end_state)-1:0];
+        else if (state==ST_COMMIT) s_end_state <= best_state_f[$bits(s_end_state)-1:0];
     end
 
     // One-time path-metric init pulse (seed state 0 with 0, others INF)
@@ -191,7 +215,7 @@ module tt_um_viterbi_core #(
     logic norm_q;
     always_ff @(posedge clk or posedge rst) begin
         if (rst) norm_q <= 1'b0;
-        else if (state == ST_COMMIT) norm_q <= (NORM != 0) && best_metric[Wm-1];
+        else if (state == ST_COMMIT) norm_q <= (NORM != 0) && best_metric_f[Wm-1];
     end
     wire [Wm-1:0] pm0_n = norm_q ? {1'b0, pm0[Wm-2:0]} : pm0;
     wire [Wm-1:0] pm1_n = norm_q ? {1'b0, pm1[Wm-2:0]} : pm1;
@@ -206,7 +230,7 @@ module tt_um_viterbi_core #(
         .clk(clk), .rst(rst),
         .init_frame(init_frame_pulse),
         .rd_idx0(p0), .rd_idx1(p1),
-        .wr_en(pm_wr_en), .wr_idx(sweep_idx), .wr_pm(pm_out),
+        .wr_en(pm_wr_en), .wr_idx(idx_q), .wr_pm(pm_q),
         .swap_banks(swap_banks),
         .rd_pm0(pm0), .rd_pm1(pm1),
         .prev_A(prev_is_A)
@@ -279,7 +303,7 @@ module tt_um_viterbi_core #(
     assign dbg_pm     = pm_out;
     assign dbg_surv   = surv_sel;
     assign dbg_commit = (state == ST_COMMIT);
-    assign dbg_best   = best_state;
+    assign dbg_best   = best_state_f;
 
 endmodule
 
