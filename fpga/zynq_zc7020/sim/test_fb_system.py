@@ -155,7 +155,8 @@ async def test_decode_and_trellis_capture(dut):
             reach = [s for s in range(n_states) if sw["path_metrics"][t][s] < 1000] \
                 if "path_metrics" in sw else list(range(n_states))
             for s in reach:
-                assert hw_pm[s] - mn == sw["path_metrics"][t][s], (t, s, hw_pm[s], mn, sw["path_metrics"][t][s])
+                if "path_metrics" in sw:  # omitted by the server at K=9
+                    assert hw_pm[s] - mn == sw["path_metrics"][t][s], (t, s, hw_pm[s], mn, sw["path_metrics"][t][s])
                 assert hw_sv[s] == sw["survivors"][t][s], (t, s)
         dut._log.info("K=%d %r: %d steps, trellis matches software for %d steps",
                       K, msg, n_steps, check_steps)

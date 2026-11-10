@@ -138,7 +138,8 @@ module viterbi_axi_framebuf #(
     reg [8:0]  fc_rd_idx;       // input read index (byte address)
     reg [8:0]  fc_wr_idx;       // output write index
     reg [3:0]  fc_rst_cnt;      // reset hold counter
-    reg [13:0] fc_timeout;      // drain timeout counter
+    reg [13:0] fc_timeout;      // drain timeout counter (fallback)
+    reg [6:0]  fc_quiet;        // cycles the decoder has been fully idle in DRAIN
     reg [8:0]  fc_frame_len_r;  // latched frame length
 
     // TT module control signals from FSM
@@ -184,6 +185,9 @@ module viterbi_axi_framebuf #(
     // Frame Controller FSM
     // =========================================================================
     wire byte_in_ready = tt_uo_out[0];  // unpacker ready for next byte
+    // Decoder fully idle: unpacker empty, core ready (rx_sym_ready already
+    // excludes a pending/running traceback), no packer byte in flight.
+    wire dec_quiet = byte_in_ready && tt_uo_out[2] && !packer_valid && !auto_ack_pulse;
 
     always @(posedge S_AXI_ACLK) begin
         if (!S_AXI_ARESETN || ctrl_soft_reset) begin
@@ -191,6 +195,7 @@ module viterbi_axi_framebuf #(
             fc_rd_idx      <= 9'd0;
             fc_rst_cnt     <= 4'd0;
             fc_timeout     <= 14'd0;
+            fc_quiet       <= 7'd0;
             fc_byte_valid  <= 1'b0;
             fc_mode        <= 1'b0;
             fc_rst_active  <= 1'b0;
@@ -240,6 +245,7 @@ module viterbi_axi_framebuf #(
                         // All input bytes sent, wait for output
                         fc_state   <= FC_DRAIN;
                         fc_timeout <= 14'd0;
+                        fc_quiet   <= 7'd0;
                     end else if (byte_in_ready && !fc_byte_valid) begin
                         // Pulse byte_valid — data at bram[fc_rd_idx] is on bus
                         fc_byte_valid <= 1'b1;
@@ -248,9 +254,14 @@ module viterbi_axi_framebuf #(
                 end
 
                 FC_DRAIN: begin
-                    // Wait for last output bytes or timeout
+                    // Done once the decoder has been idle for 127 cycles (longer
+                    // than any gap between a commit and its traceback output,
+                    // D+4 <= 64 cycles at K=9), or on the 8191-cycle fallback.
+                    // Previously this always waited the full 8191 cycles
+                    // (164 us at 50 MHz), most of the per-frame time at K=3.
                     fc_timeout <= fc_timeout + 14'd1;
-                    if (fc_timeout >= 14'd8191) begin
+                    fc_quiet   <= dec_quiet ? fc_quiet + 7'd1 : 7'd0;
+                    if (fc_quiet == 7'd127 || fc_timeout >= 14'd8191) begin
                         fc_state <= FC_DONE;
                     end
                 end
