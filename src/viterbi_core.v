@@ -64,7 +64,6 @@ module tt_um_viterbi_core #(
     // Best state argmin over pm_out (curr metrics at time t)
     logic [Wm-1:0]         best_metric;
     logic [$clog2(S)-1:0]  best_state;
-    logic [M-1:0]          s_end_state;
 
     // Registered ACS output (pipeline stage before metric write / argmin)
     logic [Wm-1:0] pm_q;
@@ -171,11 +170,6 @@ module tt_um_viterbi_core #(
         end
     end
 
-    // Latch end-state at commit (time t)
-    always_ff @(posedge clk or posedge rst) begin
-        if (rst) s_end_state <= '0;
-        else if (state==ST_COMMIT) s_end_state <= best_state_f[$bits(s_end_state)-1:0];
-    end
 
     // One-time path-metric init pulse (seed state 0 with 0, others INF)
     always_ff @(posedge clk or posedge rst) begin
@@ -262,7 +256,11 @@ module tt_um_viterbi_core #(
     end
 
     // Start TB immediately on commit once warmed, otherwise wait until warmed
-    wire [M-1:0] s_end_mux = force_state0 ? '0 : s_end_state;
+    // Traceback starts from the best state at time t, i.e. the argmin of the
+    // sweep that is committing now. (This used to read a register that was
+    // latched on this same COMMIT edge, so every traceback started from the
+    // previous symbol's best state; invisible without noise, real errors with.)
+    wire [M-1:0] s_end_mux = force_state0 ? '0 : best_state_f[M-1:0];
 
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin

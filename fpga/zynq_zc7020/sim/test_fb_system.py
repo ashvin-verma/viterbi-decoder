@@ -198,3 +198,40 @@ async def test_ber_registers(dut):
     assert bits >= 4000
     assert 0.015 < flips / chb < 0.045
     assert errs / bits < 0.02
+
+
+@cocotb.test()
+async def test_noisy_traceback_replay(dut):
+    """Noisy frames back to back: every bit the hardware emits must equal a
+    replay of its own sliding-window traceback over the captured survivors and
+    best states. This caught tracebacks starting from the previous symbol's
+    best state (invisible without noise). NOISY_DUMP=<file> also writes the
+    outputs, for A/B runs between RTL versions."""
+    await setup(dut)
+    rng = random.Random(4242)
+    n_frames = int(os.environ.get("NOISY_FRAMES", "8"))
+    lines, total_mm = [], 0
+    for f in range(n_frames):
+        msg = bytes(rng.randrange(32, 127) for _ in range(24))
+        info = S.bytes_to_bits_msb(list(msg))
+        syms = S.conv_encode(info)
+        noisy = [s ^ (1 << rng.randrange(2)) if rng.random() < 0.12 else s for s in syms]
+        frame = S.pack_symbols_to_bytes(noisy) + S.pack_symbols_to_bytes([0] * (CFG["D"] - 1))
+        out = await decode_frame(dut, frame)
+        entries = (await axi_read(dut, 0x00C)) & 0x1FFFF
+        steps = (await axi_read(dut, 0x010)) & 0x7FF
+        sv = [await axi_read(dut, 0x10000 + 4 * w) for w in range((entries + 31) // 32)]
+        bs = [await axi_read(dut, 0x14000 + 4 * w) for w in range((steps + 3) // 4)]
+        hwb = S.unpack_decoded_bytes(out)
+        tr = S.build_hw_trellis(K, CFG["D"], len(noisy), entries, steps, [], sv, bs, hwb)
+        assert tr["replay_checked"] >= len(info), (f, tr["replay_checked"])
+        rp = [st & 1 for st in tr["traceback_path"]]
+        pos = [i for i, (x, y) in enumerate(zip(rp, hwb)) if x != y]
+        hw_err = sum(x != y for x, y in zip(hwb, info))
+        total_mm += len(pos)
+        lines.append(f"{f} {bytes(out).hex()} replay_mm={len(pos)} pos={pos} hw_err={hw_err}")
+    if os.environ.get("NOISY_DUMP"):
+        with open(os.environ["NOISY_DUMP"], "w") as fh:
+            fh.write("\n".join(lines) + "\n")
+    dut._log.info("K=%d: %d noisy frames, %d replay mismatches", K, n_frames, total_mm)
+    assert total_mm == 0, "hardware traceback disagrees with replay:\n" + "\n".join(lines)
